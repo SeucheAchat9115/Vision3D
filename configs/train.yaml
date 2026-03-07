@@ -1,0 +1,28 @@
+# @package _global_
+#
+# Main training entry point configuration for Vision3D.
+# Override individual sub-configs with:
+#   python train.py model=bevformer dataset=nuscenes experiment=exp_01
+#
+# See configs/model/, configs/dataset/, configs/experiment/ for available overrides.
+
+defaults:
+  - model: bevformer        # Model architecture configuration
+  - dataset: dummy          # Dataset and dataloader configuration
+  - experiment: default     # Experiment-level hyperparameter overrides
+  - _self_                  # Allows this file to override defaults above
+
+# --- Trainer settings ---
+max_epochs: 24
+batch_size: 1
+num_workers: 4
+seed: 42
+output_dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
+
+# --- Hydra output directory ---
+hydra:
+  run:
+    dir: ${output_dir}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}

@@ -1,0 +1,15 @@
+# @package _global_
+#
+# Default experiment configuration — no overrides applied.
+# Create new experiment configs (e.g. experiment/exp_01.yaml) to override
+# specific hyperparameters without modifying the base configs.
+
+# Example overrides you might put in a custom experiment file:
+#
+# model:
+#   encoder:
+#     num_layers: 3        # Use a lighter encoder for a quick experiment
+#   learning_rate: 1.0e-4
+#
+# max_epochs: 12
+# batch_size: 2
