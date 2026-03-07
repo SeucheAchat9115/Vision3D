@@ -226,3 +226,71 @@ class LitModuleConfig:
     matcher: MatcherConfig = field(default_factory=MatcherConfig)
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
 ```
+
+## 8. Internal Data Interfaces (Nested Dataclasses)
+
+
+
+To guarantee strict typing and avoid the "dictionary key error" plague common in frameworks like MMDet3D, Vision3D uses a strictly typed, nested dataclass hierarchy to pass data from the `DataLoader` to the `LightningModule`. 
+
+The `Vision3DDataset` parses the generic JSONs and outputs a `FrameData` dataclass.
+
+```python
+import torch
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+@dataclass
+class CameraExtrinsics:
+    """Sensor to Ego transformations"""
+    translation: torch.Tensor  # Shape: (3,)
+    rotation: torch.Tensor     # Shape: (4,) - Quaternion
+
+@dataclass
+class CameraIntrinsics:
+    """Camera projection matrix"""
+    matrix: torch.Tensor       # Shape: (3, 3)
+
+@dataclass
+class CameraView:
+    """Contains everything related to a single camera view"""
+    image: torch.Tensor              # Shape: (C, H, W)
+    intrinsics: CameraIntrinsics
+    extrinsics: CameraExtrinsics
+    name: str                        # e.g., "front", "back_left"
+
+@dataclass
+class BoundingBox3DTarget:
+    """Ground truth targets for a single frame"""
+    boxes: torch.Tensor              # Shape: (N, 10) - [x, y, z, w, l, h, sin(t), cos(t), vx, vy]
+    labels: torch.Tensor             # Shape: (N,) - Class indices
+    instance_ids: List[str]          # Unique tracking IDs
+
+@dataclass
+class FrameData:
+    """The master container for a single timestamp/frame"""
+    frame_id: str
+    timestamp: float
+    cameras: Dict[str, CameraView]   # Keyed by camera name
+    targets: Optional[BoundingBox3DTarget]
+    past_frames: List['FrameData']   # Recursive list for temporal attention
+
+@dataclass
+class BatchData:
+    """Collated output from the DataLoader passed to the Model"""
+    batch_size: int
+    frames: List[FrameData]
+    
+    def to(self, device: torch.device):
+        """Helper to move all nested tensors to the target device"""
+        # Implementation to recursively move tensors to GPU
+        pass
+```
+
+### Data Flow Contract
+1. **`JsonLoader` & `ImageLoader`** read raw bytes and output native Python dictionaries and PIL Images.
+2. **`Vision3DDataset`** converts these into `torch.Tensor` objects and packs them into the `FrameData` dataclass.
+3. **`DataAugmenter`** receives `FrameData`, modifies the image tensors (e.g., cropping) and strictly updates the `CameraIntrinsics`/`CameraExtrinsics` objects inside it.
+4. **`DataLoader`** collates a list of `FrameData` into a single `BatchData` object.
+5. **`Vision3DLightningModule`** receives `BatchData` in the `training_step` and safely unpacks it for the `BEVEncoder` and `Loss` functions with full IDE auto-completion.
+
