@@ -1,0 +1,22 @@
+# data directory (populated by NuScenesConverter or DummyDatasetGenerator)
+/data/
+
+# Hydra and training outputs
+outputs/
+multirun/
+.hydra/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.uv/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

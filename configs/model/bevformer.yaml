@@ -1,0 +1,69 @@
+# @package _global_
+#
+# BEVFormer model architecture configuration.
+# All fields map to constructor arguments of the corresponding class.
+
+model:
+  _target_: vision3d.engine.lit_module.Vision3DLightningModule
+
+  # BEVFormerModel encapsulates backbone + neck + encoder + head
+  model:
+    _target_: vision3d.models.bevformer.BEVFormerModel
+
+    backbone:
+      _target_: vision3d.models.backbones.ResNetBackbone
+      depth: 50
+      out_indices: [1, 2, 3]
+      pretrained: true
+      frozen_stages: 1
+
+    neck:
+      _target_: vision3d.models.necks.FPNNeck
+      in_channels: [512, 1024, 2048]
+      out_channels: 256
+      num_outs: 4
+
+    encoder:
+      _target_: vision3d.models.encoders.BEVEncoder
+      bev_h: 200
+      bev_w: 200
+      embed_dims: 256
+      num_layers: 6
+      num_heads: 8
+      num_points: 4
+      dropout: 0.1
+      pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+
+    head:
+      _target_: vision3d.models.heads.DetectionHead
+      num_classes: 10
+      in_channels: 256
+      num_queries: 900
+      num_decoder_layers: 6
+      num_heads: 8
+      ffn_dim: 1024
+      dropout: 0.1
+
+  loss:
+    _target_: vision3d.core.losses.DetectionLoss
+    num_classes: 10
+    cls_weight: 2.0
+    bbox_weight: 0.25
+    giou_weight: 0.25
+    focal_alpha: 0.25
+    focal_gamma: 2.0
+
+  matcher:
+    _target_: vision3d.core.matchers.HungarianMatcher
+    cost_class: 2.0
+    cost_bbox: 0.25
+
+  evaluator:
+    _target_: vision3d.core.evaluators.Vision3DEvaluator
+    num_classes: 10
+    eval_range: 50.0
+    distance_thresholds: [0.5, 1.0, 2.0, 4.0]
+
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  max_epochs: 24

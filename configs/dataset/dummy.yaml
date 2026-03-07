@@ -1,0 +1,29 @@
+# @package _global_
+#
+# Dataset configuration for the synthetic dummy dataset.
+# Points to the DummyDatasetGenerator output directory.
+
+dataset:
+  _target_: vision3d.data.dataset.Vision3DDataset
+  data_root: data/dummy
+  split: train
+  num_past_frames: 2
+  image_size: [900, 1600]
+
+  box_filter:
+    _target_: vision3d.data.filters.BoxFilter
+    max_distance: 50.0
+    min_points: 0        # No point-count filtering for dummy data
+    allowed_classes: null
+
+  image_filter:
+    _target_: vision3d.data.filters.ImageFilter
+    rejected_weather: []
+    require_annotations: false
+
+  augmenter:
+    _target_: vision3d.data.augmentations.DataAugmenter
+    global_rot_range: [-0.3925, 0.3925]
+    global_scale_range: [0.95, 1.05]
+    flip_prob: 0.5
+    color_jitter_prob: 0.5
