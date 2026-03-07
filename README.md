@@ -229,15 +229,13 @@ class LitModuleConfig:
 
 ## 8. Internal Data Interfaces (Nested Dataclasses)
 
+To guarantee strict typing and avoid the "dictionary key error" plague common in frameworks like MMDet3D, Vision3D uses a strictly typed, nested dataclass hierarchy. This single container structure holds inputs, ground truth, predictions, and matching results, making it trivial to pass data to loss functions, evaluators, and visualization callbacks.
 
 
-To guarantee strict typing and avoid the "dictionary key error" plague common in frameworks like MMDet3D, Vision3D uses a strictly typed, nested dataclass hierarchy to pass data from the `DataLoader` to the `LightningModule`. 
-
-The `Vision3DDataset` parses the generic JSONs and outputs a `FrameData` dataclass.
 
 ```python
 import torch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 @dataclass
@@ -267,30 +265,44 @@ class BoundingBox3DTarget:
     instance_ids: List[str]          # Unique tracking IDs
 
 @dataclass
+class BoundingBox3DPrediction:
+    """Model predictions for a single frame"""
+    boxes: torch.Tensor              # Shape: (M, 10)
+    scores: torch.Tensor             # Shape: (M,) - Confidence scores
+    labels: torch.Tensor             # Shape: (M,) - Predicted class indices
+
+@dataclass
+class MatchingResult:
+    """Bipartite matching indices between predictions and ground truth"""
+    pred_indices: torch.Tensor       # Shape: (K,) - Indices of matched predictions
+    gt_indices: torch.Tensor         # Shape: (K,) - Indices of corresponding GT targets
+
+@dataclass
 class FrameData:
     """The master container for a single timestamp/frame"""
     frame_id: str
     timestamp: float
     cameras: Dict[str, CameraView]   # Keyed by camera name
-    targets: Optional[BoundingBox3DTarget]
-    past_frames: List['FrameData']   # Recursive list for temporal attention
+    targets: Optional[BoundingBox3DTarget] = None
+    predictions: Optional[BoundingBox3DPrediction] = None  # Populated post-inference
+    matches: Optional[MatchingResult] = None               # Populated by HungarianMatcher
+    past_frames: List['FrameData'] = field(default_factory=list)
 
 @dataclass
 class BatchData:
-    """Collated output from the DataLoader passed to the Model"""
+    """Collated output from the DataLoader passed through the pipeline"""
     batch_size: int
     frames: List[FrameData]
     
     def to(self, device: torch.device):
-        """Helper to move all nested tensors to the target device"""
-        # Implementation to recursively move tensors to GPU
+        """Helper to recursively move all nested tensors to the target GPU"""
+        # Implementation to traverse dataclasses and move tensors
         pass
 ```
 
-### Data Flow Contract
-1. **`JsonLoader` & `ImageLoader`** read raw bytes and output native Python dictionaries and PIL Images.
-2. **`Vision3DDataset`** converts these into `torch.Tensor` objects and packs them into the `FrameData` dataclass.
-3. **`DataAugmenter`** receives `FrameData`, modifies the image tensors (e.g., cropping) and strictly updates the `CameraIntrinsics`/`CameraExtrinsics` objects inside it.
-4. **`DataLoader`** collates a list of `FrameData` into a single `BatchData` object.
-5. **`Vision3DLightningModule`** receives `BatchData` in the `training_step` and safely unpacks it for the `BEVEncoder` and `Loss` functions with full IDE auto-completion.
-
+### The Data Lifecycle Contract
+1. **Dataloading:** The `Vision3DDataset` loads images and JSONs, populating the `cameras` and `targets` fields.
+2. **Augmentation:** The `DataAugmenter` modifies images and correctly updates `CameraIntrinsics` / `CameraExtrinsics`.
+3. **Forward Pass:** The `LightningModule` receives the `BatchData`, runs the `BEVEncoder` and `DetectionHead`, and populates the `predictions` field.
+4. **Matching & Loss:** During training, the `HungarianMatcher` compares `predictions` to `targets`, populates the `matches` field, and computes the `DetectionLoss`.
+5. **Evaluation & Visualization:** During validation, the fully populated `FrameData` (now containing targets, predictions, and matches) is passed directly to the `Vision3DEvaluator` (to compute mAP/NDS) and the `FoxgloveMCAPLogger` (to render GT vs. Predictions side-by-side).
