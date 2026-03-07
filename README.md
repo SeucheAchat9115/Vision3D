@@ -4,6 +4,9 @@
 **Vision3D** is a modular, PyTorch-native codebase for 3D object detection, designed for autonomous driving and robotics. Built as a clean alternative to overly complex frameworks (like MMDet3D), it prioritizes readability, community maintainability, and seamless integration with modern tools.
 
 **Core Technical Stack:**
+* **Environment Management:** Using uv to manage python dependencies and environments.
+* **Code Checks:** Code quality standards with ruff, mypy in pre-commit hooks and github actions.
+* **Testing:** Pytest testing using unit, smoke and integration tests.
 * **Deep Learning:** Pure PyTorch (No custom CUDA/C++ extensions).
 * **Training Engine:** PyTorch Lightning.
 * **Configuration:** Hydra with strictly typed Python Dataclasses.
@@ -12,17 +15,17 @@
 ## 2. Architectural Decisions for POC
 * **Initial Modality:** Multi-view Vision (extensible to LiDAR/Radar later).
 * **Baseline Model:** BEVFormer.
-* **Lightning Integration:** The PyTorch Lightning module acts strictly as a *container*. Hydra recursively instantiates all sub-components (Backbone, Encoder, Head, Loss, Matcher) and passes them into the Lightning module's `__init__`.
+* **Lightning Integration:** The PyTorch Lightning module acts strictly as a *container*. Hydra recursively instantiates all sub-components (Backbone, Encoder, Head, Loss, Matcher), passes them to the model (BEVFormer in the POC) and passes the Model into the Lightning module's `__init__`.
 * **Bounding Box Format:** Standard 10-parameter format: `[x, y, z, w, l, h, sin(theta), cos(theta), vx, vy]`.
-* **Dataloading:** Standard multi-threaded PyTorch `DataLoader` (no complex caching for the POC).
+* **Dataloading:** Standard multi-threaded PyTorch `DataLoader` (no complex caching for the POC), with annotation filtering based on e.g. distance, occlusion, metadata.
 * **Metrics:** Custom, lean reimplementation of essential metrics in pure PyTorch/NumPy to avoid dependency bloat.
 
 ## 3. Data & Coordinate System Strategy
 * **Coordinate Frame:** Ego-centric. All transformations are applied *offline* during dataset conversion. 
 * **Images:** Assumed to be pre-undistorted.
-* **Generic Format:** Data is loaded from a custom format consisting of PNGs and a single JSON file per frame.
-    * The JSON contains all bounding boxes, camera intrinsics, and a pointer/tag to past frames for temporal attention.
-* **Dataset Conversion:** NuScenes will be the first supported dataset, handled via an offline standalone conversion script.
+* **Generic Format:** Data is loaded from a custom format consisting of PNGs or JPGs and a single JSON file per frame containing all box, calibration & other metadata.
+    * The JSON contains all bounding boxes, camera intrinsics, metadata, and a pointer/tag to past frames for temporal attention.
+* **Dataset Conversion:** NuScenes will be the first supported dataset, handled via an offline standalone conversion script. Initially there should also be a dummy dataset with some random pngs and jsons.
 
 ---
 
@@ -85,8 +88,10 @@ Vision3D/
 * `JsonLoader`: Responsible purely for reading, parsing, and validating the generic JSON schema.
 * `ImageLoader`: Handles multi-threaded I/O for reading the 6+ multi-view PNGs efficiently.
 * `BoxFilter`: Filters out ground truth boxes that fall outside the perception range, have too few visible points, or are physically invalid.
+* `ImageFilter`: Filters out images that fall outside of specified Operational Design Domain (ODD) like weather, daytime or other from metadata. Also e.g. images with no annotations can be filtered out.
 * `DataAugmenter`: Applies synchronized 3D and 2D augmentations (e.g., global rotation, image flipping). *Crucial: Must update camera extrinsics/intrinsics if the 3D space or 2D image is altered.*
 * `NuScenesConverter`: A standalone utility class to parse the `nuscenes-devkit` and output ego-centric coordinates, undistorted images, and the unified JSON.
+* `DummyDatasetGenerator`: A generator to generate a new dataset (based on parameters) which could be used to test the dataloader and model with some random image and json data.
 
 ### Model Architecture (BEVFormer POC)
 * `ResNetBackbone(nn.Module)`: Standard 2D feature extractor.
@@ -94,6 +99,7 @@ Vision3D/
 * `BEVEncoder(nn.Module)`: The core BEVFormer module. Must implement Temporal Self-Attention and Spatial Cross-Attention.
     * *Constraint:* Must use native PyTorch (e.g., `F.grid_sample`) instead of custom Deformable Attention CUDA kernels.
 * `DetectionHead(nn.Module)`: Takes the BEV grid and uses a transformer decoder to output 3D bounding box predictions and class logits.
+* `BEVFormerModel(nn.Module)`: A high level model, which encapsules the single elements and combines them into one single model to pass to pytorch lightning.
 
 ### Core Logic
 * `HungarianMatcher`: Computes the optimal bipartite matching between predicted queries and ground truth boxes based on classification and box distance costs.
@@ -147,6 +153,12 @@ Each frame in the dataset will have a single corresponding JSON file (e.g., `fra
       ]
     }
   ]
+  "metadata": {
+     "weather": ...,
+     ...
+     "occlusion": ...,
+     ...
+  }
 }
 ```
 
