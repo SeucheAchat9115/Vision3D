@@ -66,7 +66,7 @@ Vision3D/
 ├── train.py                     # Main training script (Hydra @main)
 ├── requirements.txt
 └── README.md
-
+```
 5. Required Classes to Implement
 Data Layer
  * Vision3DDataset(Dataset): Reads the generic JSON, loads the corresponding PNGs, structures the historical frame logic, and outputs standardized dictionary/dataclass batches.
