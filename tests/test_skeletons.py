@@ -128,7 +128,8 @@ class TestEngineAndUtils:
     """Interface tests for the engine and utility classes."""
 
     def test_lightning_module_exists(self):
-        """Vision3DLightningModule should subclass pl.LightningModule."""
+        """Vision3DLightningModule should subclass pl.LightningModule and accept a BEVFormerModel."""
+        import inspect
         import pytorch_lightning as pl
         from vision3d.engine.lit_module import Vision3DLightningModule
 
@@ -136,6 +137,18 @@ class TestEngineAndUtils:
         assert hasattr(Vision3DLightningModule, "training_step")
         assert hasattr(Vision3DLightningModule, "validation_step")
         assert hasattr(Vision3DLightningModule, "configure_optimizers")
+
+        # The __init__ should accept 'model' (BEVFormerModel), not backbone/neck/encoder/head
+        sig = inspect.signature(Vision3DLightningModule.__init__)
+        params = set(sig.parameters.keys())
+        assert "model" in params
+        assert "matcher" in params
+        assert "loss" in params
+        assert "evaluator" in params
+        assert "backbone" not in params
+        assert "neck" not in params
+        assert "encoder" not in params
+        assert "head" not in params
 
     def test_camera_projector_exists(self):
         """CameraProjector should be importable and expose a project method."""
@@ -160,6 +173,7 @@ class TestConfigSchema:
         """All Hydra config dataclasses should be importable from config.schema."""
         from vision3d.config.schema import (
             BackboneConfig,
+            BEVFormerModelConfig,
             DatasetConfig,
             EncoderConfig,
             EvaluatorConfig,
@@ -179,6 +193,20 @@ class TestConfigSchema:
         assert LossConfig._target_ == "vision3d.core.losses.DetectionLoss"
         assert MatcherConfig._target_ == "vision3d.core.matchers.HungarianMatcher"
         assert EvaluatorConfig._target_ == "vision3d.core.evaluators.Vision3DEvaluator"
+        assert BEVFormerModelConfig._target_ == "vision3d.models.bevformer.BEVFormerModel"
+
+        # LitModuleConfig should have a 'model' field (BEVFormerModelConfig),
+        # not individual backbone/neck/encoder/head fields
+        import dataclasses
+        lit_fields = {f.name for f in dataclasses.fields(LitModuleConfig)}
+        assert "model" in lit_fields
+        assert "loss" in lit_fields
+        assert "matcher" in lit_fields
+        assert "evaluator" in lit_fields
+        assert "backbone" not in lit_fields
+        assert "neck" not in lit_fields
+        assert "encoder" not in lit_fields
+        assert "head" not in lit_fields
 
     def test_data_interface_dataclasses_importable(self):
         """All runtime data interface dataclasses should be importable."""

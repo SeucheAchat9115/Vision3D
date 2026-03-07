@@ -1,5 +1,5 @@
 # data directory (populated by NuScenesConverter or DummyDatasetGenerator)
-data/
+/data/
 
 # Hydra and training outputs
 outputs/

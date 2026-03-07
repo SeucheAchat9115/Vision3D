@@ -274,18 +274,40 @@ class EvaluatorConfig:
 
 
 @dataclass
-class LitModuleConfig:
-    """Top-level Hydra configuration for Vision3DLightningModule.
+class BEVFormerModelConfig:
+    """Hydra configuration for BEVFormerModel.
 
-    Bundles all sub-component configs so that Hydra can recursively instantiate
-    the full model + training infrastructure from a single config object.
+    Bundles the backbone, neck, encoder, and head sub-configs so that Hydra
+    can recursively instantiate the full `BEVFormerModel` as a single unit.
+    This config is passed as the `model` argument to `LitModuleConfig`.
+
+    Attributes:
+        _target_: Fully qualified class path for Hydra instantiation.
+        backbone: Configuration for the ResNet backbone.
+        neck: Configuration for the FPN neck.
+        encoder: Configuration for the BEV encoder.
+        head: Configuration for the detection head.
     """
 
-    _target_: str = "vision3d.engine.lit_module.Vision3DLightningModule"
+    _target_: str = "vision3d.models.bevformer.BEVFormerModel"
     backbone: BackboneConfig = field(default_factory=BackboneConfig)
     neck: NeckConfig = field(default_factory=NeckConfig)
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     head: HeadConfig = field(default_factory=HeadConfig)
+
+
+@dataclass
+class LitModuleConfig:
+    """Top-level Hydra configuration for Vision3DLightningModule.
+
+    Accepts a pre-assembled `BEVFormerModel` config alongside the
+    training-only components (matcher, loss, evaluator). Hydra instantiates
+    the model first and passes it to the Lightning module, keeping the two
+    concerns cleanly separated.
+    """
+
+    _target_: str = "vision3d.engine.lit_module.Vision3DLightningModule"
+    model: BEVFormerModelConfig = field(default_factory=BEVFormerModelConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     matcher: MatcherConfig = field(default_factory=MatcherConfig)
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)

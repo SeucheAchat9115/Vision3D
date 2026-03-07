@@ -24,29 +24,26 @@ from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.models.bevformer import BEVFormerModel
-from vision3d.models.backbones.resnet import ResNetBackbone
-from vision3d.models.encoders.bev_encoder import BEVEncoder
-from vision3d.models.heads.detection_head import DetectionHead
-from vision3d.models.necks.fpn import FPNNeck
 
 
 class Vision3DLightningModule(pl.LightningModule):
     """PyTorch Lightning container for the BEVFormer training pipeline.
 
-    Acts strictly as a wiring layer: all sub-components (backbone, neck,
-    encoder, head, matcher, loss, evaluator) are injected via the constructor
-    and composed into a `BEVFormerModel`. This design allows Hydra to
-    recursively instantiate every component from config without any module
-    knowing about Lightning.
+    Acts strictly as a wiring layer: a fully assembled `BEVFormerModel` (which
+    already encapsulates the backbone, neck, encoder, and head) is injected
+    alongside the training-only components (matcher, loss, evaluator). This
+    keeps the Lightning module free of model construction details and allows
+    Hydra to instantiate the `BEVFormerModel` independently before passing it
+    here.
 
     Args:
-        backbone: Instantiated `ResNetBackbone`.
-        neck: Instantiated `FPNNeck`.
-        encoder: Instantiated `BEVEncoder`.
-        head: Instantiated `DetectionHead`.
-        matcher: Instantiated `HungarianMatcher`.
-        loss: Instantiated `DetectionLoss`.
-        evaluator: Instantiated `Vision3DEvaluator`.
+        model: Fully instantiated `BEVFormerModel` containing backbone, neck,
+            BEV encoder, and detection head.
+        matcher: Instantiated `HungarianMatcher` used during training to assign
+            predictions to ground-truth boxes.
+        loss: Instantiated `DetectionLoss` used to compute the training objective.
+        evaluator: Instantiated `Vision3DEvaluator` used during validation to
+            accumulate and compute mAP / NDS metrics.
         learning_rate: Peak learning rate for AdamW.
         weight_decay: L2 regularisation coefficient for AdamW.
         max_epochs: Total training epochs, used to configure the cosine LR schedule.
@@ -54,10 +51,7 @@ class Vision3DLightningModule(pl.LightningModule):
 
     def __init__(
         self,
-        backbone: ResNetBackbone,
-        neck: FPNNeck,
-        encoder: BEVEncoder,
-        head: DetectionHead,
+        model: BEVFormerModel,
         matcher: HungarianMatcher,
         loss: DetectionLoss,
         evaluator: Vision3DEvaluator,
@@ -66,10 +60,9 @@ class Vision3DLightningModule(pl.LightningModule):
         max_epochs: int = 24,
     ) -> None:
         super().__init__()
-        # TODO: call self.save_hyperparameters() for logging and checkpointing
-        # TODO: wrap backbone, neck, encoder, head into BEVFormerModel and assign
-        #       to self.model
-        # TODO: assign matcher, loss, evaluator as attributes
+        # TODO: call self.save_hyperparameters(ignore=["model", "matcher", "loss", "evaluator"])
+        # TODO: assign self.model = model
+        # TODO: assign self.matcher, self.loss, self.evaluator as attributes
         # TODO: store learning_rate, weight_decay, max_epochs
         # TODO: initialise a buffer to hold the previous timestep's BEV features
         #       (self._prev_bev = None)

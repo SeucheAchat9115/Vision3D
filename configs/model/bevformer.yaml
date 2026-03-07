@@ -6,39 +6,43 @@
 model:
   _target_: vision3d.engine.lit_module.Vision3DLightningModule
 
-  backbone:
-    _target_: vision3d.models.backbones.ResNetBackbone
-    depth: 50
-    out_indices: [1, 2, 3]
-    pretrained: true
-    frozen_stages: 1
+  # BEVFormerModel encapsulates backbone + neck + encoder + head
+  model:
+    _target_: vision3d.models.bevformer.BEVFormerModel
 
-  neck:
-    _target_: vision3d.models.necks.FPNNeck
-    in_channels: [512, 1024, 2048]
-    out_channels: 256
-    num_outs: 4
+    backbone:
+      _target_: vision3d.models.backbones.ResNetBackbone
+      depth: 50
+      out_indices: [1, 2, 3]
+      pretrained: true
+      frozen_stages: 1
 
-  encoder:
-    _target_: vision3d.models.encoders.BEVEncoder
-    bev_h: 200
-    bev_w: 200
-    embed_dims: 256
-    num_layers: 6
-    num_heads: 8
-    num_points: 4
-    dropout: 0.1
-    pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+    neck:
+      _target_: vision3d.models.necks.FPNNeck
+      in_channels: [512, 1024, 2048]
+      out_channels: 256
+      num_outs: 4
 
-  head:
-    _target_: vision3d.models.heads.DetectionHead
-    num_classes: 10
-    in_channels: 256
-    num_queries: 900
-    num_decoder_layers: 6
-    num_heads: 8
-    ffn_dim: 1024
-    dropout: 0.1
+    encoder:
+      _target_: vision3d.models.encoders.BEVEncoder
+      bev_h: 200
+      bev_w: 200
+      embed_dims: 256
+      num_layers: 6
+      num_heads: 8
+      num_points: 4
+      dropout: 0.1
+      pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+
+    head:
+      _target_: vision3d.models.heads.DetectionHead
+      num_classes: 10
+      in_channels: 256
+      num_queries: 900
+      num_decoder_layers: 6
+      num_heads: 8
+      ffn_dim: 1024
+      dropout: 0.1
 
   loss:
     _target_: vision3d.core.losses.DetectionLoss

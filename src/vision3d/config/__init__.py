@@ -1,6 +1,7 @@
 from vision3d.config.schema import (
     BackboneConfig,
     BatchData,
+    BEVFormerModelConfig,
     BoundingBox3DPrediction,
     BoundingBox3DTarget,
     CameraExtrinsics,
@@ -22,6 +23,7 @@ from vision3d.config.schema import (
 __all__ = [
     "BackboneConfig",
     "BatchData",
+    "BEVFormerModelConfig",
     "BoundingBox3DPrediction",
     "BoundingBox3DTarget",
     "CameraExtrinsics",
