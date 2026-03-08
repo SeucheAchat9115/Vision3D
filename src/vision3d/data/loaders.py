@@ -84,7 +84,7 @@ class ImageLoader:
             self._executor = ThreadPoolExecutor(max_workers=self.num_threads)
         return self._executor
 
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> dict[str, Any]:
         """Exclude the unpicklable ThreadPoolExecutor from serialisation."""
         state = self.__dict__.copy()
         state["_executor"] = None
@@ -112,5 +112,5 @@ class ImageLoader:
 
     def __del__(self) -> None:
         """Shut down the internal thread pool executor on garbage collection."""
-        if hasattr(self, "_executor"):
+        if hasattr(self, "_executor") and self._executor is not None:
             self._executor.shutdown(wait=False)
