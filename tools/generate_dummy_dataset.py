@@ -5,7 +5,7 @@ Provides `DummyDatasetGenerator`, which creates a fully self-contained synthetic
 dataset in the Vision3D generic format (random PNGs + JSONs).
 
 Usage:
-    python scripts/generate_dummy_dataset.py \\
+    python tools/generate_dummy_dataset.py \\
         --output_root  /data/dummy \\
         --num_frames   50 \\
         --num_cameras  6 \\

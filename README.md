@@ -13,13 +13,13 @@ cd Vision3D
 uv sync
 
 # 2. Generate synthetic test data
-python scripts/generate_dummy_dataset.py --output-dir data/dummy --num-frames 50
+python tools/generate_dummy_dataset.py --output-dir data/dummy --num-frames 50
 
 # 3. Train (dummy data, default settings)
-python train.py
+python tools/train.py
 
 # 4. Train on NuScenes (after conversion)
-python train.py dataset=nuscenes max_epochs=24 batch_size=4
+python tools/train.py dataset=nuscenes max_epochs=24 batch_size=4
 ```
 
 ## Tech stack
@@ -85,7 +85,7 @@ the training pipeline only ever reads clean, ego-centric data.
 Vision3D/
 ├── configs/               # Hydra YAML configs (model, dataset, experiment)
 ├── docs/                  # Specialised documentation
-├── scripts/               # Offline data-processing utilities
+├── tools/                 # Training entry point and offline data-processing utilities
 ├── src/vision3d/          # Installable Python package
 │   ├── config/            # Hydra schema + runtime dataclasses
 │   ├── core/              # Losses, matchers, evaluators
@@ -94,7 +94,6 @@ Vision3D/
 │   ├── models/            # Backbone, neck, encoder, head
 │   └── utils/             # Geometry helpers, Foxglove logger
 ├── tests/                 # Unit, integration, and smoke tests
-├── train.py               # Hydra training entry point
 └── pyproject.toml
 ```
 

@@ -6,7 +6,7 @@ dataset (via the nuscenes-devkit) and converts it to the Vision3D generic
 format.
 
 Usage:
-    python scripts/convert_nuscenes.py \\
+    python tools/convert_nuscenes.py \\
         --nuscenes_root /data/nuscenes \\
         --output_root  /data/vision3d_nuscenes \\
         --version      v1.0-trainval \\

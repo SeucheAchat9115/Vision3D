@@ -36,7 +36,7 @@ dev = [
 viz = [
     "mcap>=1.1.0",
 ]
-# Dataset conversion — install when running scripts/convert_nuscenes.py
+# Dataset conversion — install when running tools/convert_nuscenes.py
 nuscenes = [
     "nuscenes-devkit>=1.1.11",
 ]
