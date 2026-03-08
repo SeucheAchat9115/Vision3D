@@ -31,7 +31,6 @@ dev = [
 # Visualisation (Foxglove MCAP) — install when using FoxgloveMCAPLogger
 viz = [
     "mcap>=1.1.0",
-    "foxglove-schemas-protobuf>=0.7.0",
 ]
 # Dataset conversion — install when running scripts/convert_nuscenes.py
 nuscenes = [
