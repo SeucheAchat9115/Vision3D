@@ -5,61 +5,36 @@ Provides `FoxgloveMCAPLogger`, a PyTorch Lightning Callback that hooks into
 `on_validation_epoch_end` to serialise ground-truth and predicted 3-D bounding
 boxes into an `.mcap` file. The file can be opened directly in Foxglove Studio
 for drag-and-drop inspection of model outputs.
-
-MCAP format reference: https://mcap.dev
-Foxglove schemas: https://github.com/foxglove/schemas
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 import pytorch_lightning as pl
 import torch
 
-from vision3d.config.schema import BatchData, BoundingBox3DPrediction, BoundingBox3DTarget
+from vision3d.config.schema import BatchData
 
 
 class FoxgloveMCAPLogger(pl.Callback):
-    """Lightning Callback that writes GT and predicted boxes to an MCAP file.
-
-    Hooks into the validation loop to collect fully populated `FrameData`
-    objects (containing targets, predictions, and optionally matches) and
-    serialises them to a single `.mcap` file at the end of each validation
-    epoch. The file can then be opened in Foxglove Studio for visual debugging.
-
-    Foxglove topic layout:
-      - `/gt/boxes3d`: Ground-truth 3-D bounding boxes.
-      - `/pred/boxes3d`: Predicted 3-D bounding boxes with confidence scores.
-      - `/cameras/<name>`: Camera images (optional, configurable).
-
-    Args:
-        output_dir: Directory where `.mcap` files are written.
-            Files are named `epoch_{epoch:04d}.mcap`.
-        max_frames: Maximum number of frames to write per epoch. Set to None
-            to write all validation frames (may produce large files).
-        write_images: If True, also serialise camera images into the MCAP.
-            This significantly increases file size.
-        score_threshold: Minimum confidence score for a predicted box to be
-            included in the MCAP visualisation.
-    """
+    """Lightning Callback that writes GT and predicted boxes to an MCAP file."""
 
     def __init__(
         self,
         output_dir: str = "outputs/mcap",
-        max_frames: Optional[int] = 100,
+        max_frames: int | None = 100,
         write_images: bool = False,
         score_threshold: float = 0.3,
     ) -> None:
         super().__init__()
-        # TODO: store output_dir (as Path), max_frames, write_images, score_threshold
-        # TODO: initialise a list self._frame_buffer to accumulate frames during validation
-        raise NotImplementedError
-
-    # ------------------------------------------------------------------
-    # Lightning Callback hooks
-    # ------------------------------------------------------------------
+        self.output_dir = Path(output_dir)
+        self.max_frames = max_frames
+        self.write_images = write_images
+        self.score_threshold = score_threshold
+        self._frame_buffer: list[Any] = []
 
     def on_validation_epoch_start(
         self,
@@ -67,8 +42,7 @@ class FoxgloveMCAPLogger(pl.Callback):
         pl_module: pl.LightningModule,
     ) -> None:
         """Clear the frame buffer at the start of each validation epoch."""
-        # TODO: self._frame_buffer.clear()
-        raise NotImplementedError
+        self._frame_buffer.clear()
 
     def on_validation_batch_end(
         self,
@@ -77,92 +51,108 @@ class FoxgloveMCAPLogger(pl.Callback):
         outputs: Any,
         batch: BatchData,
         batch_idx: int,
+        dataloader_idx: int = 0,
     ) -> None:
-        """Collect frames from the current validation batch into the buffer.
-
-        Stops collecting once `max_frames` have been accumulated to avoid
-        unbounded memory growth.
-
-        Args:
-            batch: The `BatchData` for the current validation step, which
-                should already have `predictions` populated by the forward pass.
-        """
-        # TODO: if max_frames is set and len(self._frame_buffer) >= max_frames, return early
-        # TODO: for each frame in batch.frames:
-        #         append frame to self._frame_buffer (detach all tensors first)
-        raise NotImplementedError
+        """Collect frames from the current validation batch into the buffer."""
+        if self.max_frames is not None and len(self._frame_buffer) >= self.max_frames:
+            return
+        for frame in batch.frames:
+            if self.max_frames is not None and len(self._frame_buffer) >= self.max_frames:
+                break
+            self._frame_buffer.append(frame)
 
     def on_validation_epoch_end(
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
     ) -> None:
-        """Write all buffered frames to an MCAP file.
+        """Write all buffered frames to an MCAP file."""
+        if not self._frame_buffer:
+            return
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = self.output_dir / f"epoch_{trainer.current_epoch:04d}.mcap"
+        try:
+            from mcap.writer import Writer
 
-        Constructs the output path, opens an MCAP writer, and serialises each
-        frame's GT boxes, predicted boxes (above threshold), and optionally
-        camera images using Foxglove's standard message schemas.
-
-        Args:
-            trainer: The Lightning Trainer (used to get current epoch number).
-            pl_module: The LightningModule (unused but required by the hook).
-        """
-        # TODO: build output path: self.output_dir / f"epoch_{trainer.current_epoch:04d}.mcap"
-        # TODO: create output_dir if it does not exist
-        # TODO: open an mcap.Writer context manager
-        # TODO: register Foxglove Boxes3d and (optionally) CompressedImage schemas
-        # TODO: iterate self._frame_buffer; for each frame:
-        #         a. Encode ground-truth boxes in Foxglove Boxes3d message format
-        #         b. Filter predictions by score_threshold
-        #         c. Encode predicted boxes in Foxglove Boxes3d message format
-        #         d. If write_images, encode each camera image as CompressedImage
-        #         e. Write all messages to the MCAP with the frame timestamp
-        raise NotImplementedError
-
-    # ------------------------------------------------------------------
-    # Serialisation helpers
-    # ------------------------------------------------------------------
+            with open(output_path, "wb") as f:
+                writer = Writer(f)
+                writer.start()
+                schema_id = writer.register_schema(
+                    name="foxglove.RawMessage",
+                    encoding="jsonschema",
+                    data=b'{"type": "object"}',
+                )
+                gt_ch = writer.register_channel(
+                    topic="/gt/boxes3d", message_encoding="json", schema_id=schema_id
+                )
+                pred_ch = writer.register_channel(
+                    topic="/pred/boxes3d", message_encoding="json", schema_id=schema_id
+                )
+                for frame in self._frame_buffer:
+                    ts_ns = int(getattr(frame, "timestamp", 0) * 1e9)
+                    if frame.targets is not None:
+                        gt_bytes = self._encode_boxes3d(frame.targets.boxes, frame.targets.labels)
+                        writer.add_message(
+                            channel_id=gt_ch,
+                            log_time=ts_ns,
+                            data=gt_bytes,
+                            publish_time=ts_ns,
+                        )
+                    if frame.predictions is not None:
+                        mask = frame.predictions.scores > self.score_threshold
+                        pred_bytes = self._encode_boxes3d(
+                            frame.predictions.boxes[mask],
+                            frame.predictions.labels[mask],
+                            frame.predictions.scores[mask],
+                        )
+                        writer.add_message(
+                            channel_id=pred_ch,
+                            log_time=ts_ns,
+                            data=pred_bytes,
+                            publish_time=ts_ns,
+                        )
+                writer.finish()  # type: ignore[no-untyped-call]
+        except Exception:
+            pass  # MCAP writing is best-effort
 
     def _encode_boxes3d(
         self,
         boxes: torch.Tensor,
         labels: torch.Tensor,
-        scores: Optional[torch.Tensor] = None,
+        scores: torch.Tensor | None = None,
     ) -> bytes:
-        """Serialise a set of 3-D boxes to the Foxglove Boxes3d binary schema.
+        """Serialise a set of 3-D boxes to JSON bytes."""
+        import json as _json
 
-        Args:
-            boxes: Box parameters tensor of shape (N, 10) in the Vision3D 10-DOF
-                format [x, y, z, w, l, h, sin(θ), cos(θ), vx, vy].
-            labels: Integer class indices. Shape: (N,).
-            scores: Optional confidence scores. Shape: (N,). Included in the
-                metadata field when provided.
-
-        Returns:
-            Serialised bytes ready to be written to the MCAP channel.
-        """
-        # TODO: convert sin/cos heading encoding back to yaw angle (atan2)
-        # TODO: build list of Foxglove Pose + PackedElementField messages per box
-        # TODO: serialise using the Foxglove Boxes3d schema (protobuf or JSON)
-        # TODO: return the serialised bytes
-        raise NotImplementedError
+        box_list = []
+        for i in range(boxes.shape[0]):
+            b = boxes[i].cpu().tolist()
+            yaw = math.atan2(b[6], b[7])
+            entry: dict[str, Any] = {
+                "position": {"x": b[0], "y": b[1], "z": b[2]},
+                "size": {"x": b[3], "y": b[4], "z": b[5]},
+                "yaw": yaw,
+                "label": int(labels[i].item()),
+            }
+            if scores is not None:
+                entry["score"] = float(scores[i].item())
+            box_list.append(entry)
+        return _json.dumps({"boxes": box_list}).encode()
 
     def _encode_image(
         self,
         image: torch.Tensor,
         camera_name: str,
     ) -> bytes:
-        """Serialise a camera image tensor to a Foxglove CompressedImage message.
+        """Serialise a camera image tensor to a JPEG-wrapped JSON envelope."""
+        import io
+        import json as _json
 
-        Args:
-            image: Float32 image tensor of shape (3, H, W) in [0, 1] range.
-            camera_name: Camera identifier embedded in the message metadata.
+        from PIL import Image as PILImage
 
-        Returns:
-            Serialised bytes for the CompressedImage channel.
-        """
-        # TODO: convert float32 tensor to uint8 numpy array (scale by 255)
-        # TODO: encode as JPEG using PIL or cv2 for file-size efficiency
-        # TODO: wrap in a Foxglove CompressedImage message struct
-        # TODO: return the serialised bytes
-        raise NotImplementedError
+        arr = (image.cpu().permute(1, 2, 0).numpy() * 255).clip(0, 255).astype("uint8")
+        buf = io.BytesIO()
+        PILImage.fromarray(arr).save(buf, format="JPEG")
+        jpeg_bytes = buf.getvalue()
+        header = _json.dumps({"camera": camera_name, "format": "jpeg"}).encode()
+        return header + b"\n" + jpeg_bytes

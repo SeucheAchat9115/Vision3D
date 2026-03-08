@@ -10,10 +10,9 @@ This module defines two groups of dataclasses:
 
 from __future__ import annotations
 
-import torch
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 
+import torch
 
 # ---------------------------------------------------------------------------
 # Runtime data interface dataclasses
@@ -78,7 +77,7 @@ class BoundingBox3DTarget:
 
     boxes: torch.Tensor  # Shape: (N, 10)
     labels: torch.Tensor  # Shape: (N,)
-    instance_ids: List[str]
+    instance_ids: list[str]
 
 
 @dataclass
@@ -130,11 +129,11 @@ class FrameData:
 
     frame_id: str
     timestamp: float
-    cameras: Dict[str, CameraView]
-    targets: Optional[BoundingBox3DTarget] = None
-    predictions: Optional[BoundingBox3DPrediction] = None
-    matches: Optional[MatchingResult] = None
-    past_frames: List[FrameData] = field(default_factory=list)
+    cameras: dict[str, CameraView]
+    targets: BoundingBox3DTarget | None = None
+    predictions: BoundingBox3DPrediction | None = None
+    matches: MatchingResult | None = None
+    past_frames: list[FrameData] = field(default_factory=list)
 
 
 @dataclass
@@ -147,18 +146,33 @@ class BatchData:
     """
 
     batch_size: int
-    frames: List[FrameData]
+    frames: list[FrameData]
 
     def to(self, device: torch.device) -> BatchData:
-        """Recursively move all nested tensors to *device*.
+        """Recursively move all nested tensors to *device*."""
 
-        Should traverse the dataclass hierarchy and call `.to(device)` on every
-        `torch.Tensor` found inside `frames` (including tensors inside
-        CameraView, CameraIntrinsics, CameraExtrinsics, BoundingBox3DTarget,
-        BoundingBox3DPrediction, MatchingResult, and past_frames recursively).
-        """
-        # TODO: implement recursive tensor relocation
-        raise NotImplementedError
+        def _move_frame(frame: FrameData) -> None:
+            for cam_view in frame.cameras.values():
+                cam_view.image = cam_view.image.to(device)
+                cam_view.intrinsics.matrix = cam_view.intrinsics.matrix.to(device)
+                cam_view.extrinsics.translation = cam_view.extrinsics.translation.to(device)
+                cam_view.extrinsics.rotation = cam_view.extrinsics.rotation.to(device)
+            if frame.targets is not None:
+                frame.targets.boxes = frame.targets.boxes.to(device)
+                frame.targets.labels = frame.targets.labels.to(device)
+            if frame.predictions is not None:
+                frame.predictions.boxes = frame.predictions.boxes.to(device)
+                frame.predictions.scores = frame.predictions.scores.to(device)
+                frame.predictions.labels = frame.predictions.labels.to(device)
+            if frame.matches is not None:
+                frame.matches.pred_indices = frame.matches.pred_indices.to(device)
+                frame.matches.gt_indices = frame.matches.gt_indices.to(device)
+            for past in frame.past_frames:
+                _move_frame(past)
+
+        for frame in self.frames:
+            _move_frame(frame)
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +192,7 @@ class BackboneConfig:
 
     _target_: str = "vision3d.models.backbones.ResNetBackbone"
     depth: int = 50
-    out_indices: List[int] = field(default_factory=lambda: [1, 2, 3])
+    out_indices: list[int] = field(default_factory=lambda: [1, 2, 3])
 
 
 @dataclass
@@ -192,7 +206,7 @@ class NeckConfig:
     """
 
     _target_: str = "vision3d.models.necks.FPNNeck"
-    in_channels: List[int] = field(default_factory=lambda: [512, 1024, 2048])
+    in_channels: list[int] = field(default_factory=lambda: [512, 1024, 2048])
     out_channels: int = 256
 
 
@@ -331,7 +345,7 @@ class DatasetConfig:
     split: str = "train"
     num_cameras: int = 6
     num_past_frames: int = 2
-    image_size: List[int] = field(default_factory=lambda: [900, 1600])
+    image_size: list[int] = field(default_factory=lambda: [900, 1600])
 
 
 @dataclass

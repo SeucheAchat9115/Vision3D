@@ -8,67 +8,39 @@ dimension and spatially aligned scales, ready to be consumed by the BEVEncoder.
 
 from __future__ import annotations
 
-from typing import List
-
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class FPNNeck(nn.Module):
-    """Feature Pyramid Network that aligns backbone feature map scales.
-
-    Takes the multi-scale output of `ResNetBackbone` and produces a list of
-    feature maps at the same scales but with a uniform `out_channels` channel
-    count. Lateral connections + top-down pathway with nearest-neighbour
-    upsampling are used to fuse semantic and spatial information.
-
-    Architecture overview:
-      1. Apply a 1×1 lateral convolution to each backbone feature map to
-         project it to `out_channels`.
-      2. Build a top-down pathway by upsampling each level and adding it to the
-         level below.
-      3. Apply a 3×3 output convolution to each level to smooth aliasing
-         artefacts from the addition.
-
-    Args:
-        in_channels: List of channel counts for each input feature map, ordered
-            from the largest spatial resolution to the smallest.
-            E.g. [512, 1024, 2048] for ResNet-50 stages 1-3.
-        out_channels: Unified output channel count for all pyramid levels.
-        num_outs: Number of output feature levels. Extra levels beyond those
-            provided by the backbone are generated via max-pooling.
-    """
+    """Feature Pyramid Network that aligns backbone feature map scales."""
 
     def __init__(
         self,
-        in_channels: List[int] = None,
+        in_channels: list[int] | None = None,
         out_channels: int = 256,
         num_outs: int = 4,
     ) -> None:
         super().__init__()
-        # TODO: validate that len(in_channels) >= 1
-        # TODO: build nn.ModuleList of 1×1 lateral convolutions (one per in_channels entry)
-        # TODO: build nn.ModuleList of 3×3 output convolutions (one per output level)
-        # TODO: if num_outs > len(in_channels), build extra max-pooling layers for
-        #       the additional output levels
-        raise NotImplementedError
+        if in_channels is None:
+            in_channels = [512, 1024, 2048]
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.num_outs = num_outs
+        self.lateral_convs = nn.ModuleList([nn.Conv2d(c, out_channels, 1) for c in in_channels])
+        self.output_convs = nn.ModuleList(
+            [nn.Conv2d(out_channels, out_channels, 3, padding=1) for _ in range(num_outs)]
+        )
 
-    def forward(self, features: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Build the feature pyramid and return aligned feature maps.
-
-        Args:
-            features: List of backbone feature tensors ordered from the largest
-                spatial resolution to the smallest. Each tensor has shape
-                (B, C_i, H_i, W_i).
-
-        Returns:
-            List of feature tensors all with `out_channels` channels, ordered
-            from largest to smallest spatial resolution.
-        """
-        # TODO: apply lateral convolutions to all input feature maps
-        # TODO: run the top-down pathway (iterating from the smallest scale up),
-        #       upsampling and adding to the next finer level
-        # TODO: apply output 3×3 convolutions to each level
-        # TODO: generate any extra levels via max-pooling if num_outs > len(features)
-        # TODO: return the list of output feature maps
-        raise NotImplementedError
+    def forward(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Build the feature pyramid and return aligned feature maps."""
+        assert len(features) == len(self.lateral_convs)
+        laterals = [lat(f) for lat, f in zip(self.lateral_convs, features, strict=False)]
+        for i in range(len(laterals) - 1, 0, -1):
+            upsampled = F.interpolate(laterals[i], size=laterals[i - 1].shape[2:], mode="nearest")
+            laterals[i - 1] = laterals[i - 1] + upsampled
+        outs = [self.output_convs[i](laterals[i]) for i in range(len(laterals))]
+        for i in range(len(laterals), self.num_outs):
+            outs.append(self.output_convs[i](F.max_pool2d(outs[-1], 1, stride=2)))
+        return outs
