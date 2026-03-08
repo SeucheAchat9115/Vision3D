@@ -28,7 +28,6 @@ from vision3d.config.schema import (
     CameraIntrinsics,
     CameraView,
     FrameData,
-    MatchingResult,
 )
 from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.core.losses import DetectionLoss
@@ -559,7 +558,7 @@ class TestModelMatcherLossIntegration:
         assert torch.isfinite(total)
 
     @pytest.mark.parametrize(
-        "cls_w,bbox_w,giou_w",
+        ("cls_w", "bbox_w", "giou_w"),
         [(2.0, 0.25, 0.1), (1.0, 1.0, 1.0), (0.0, 1.0, 0.0)],
     )
     def test_training_pass_different_loss_weights(
@@ -636,7 +635,7 @@ class TestModelEvaluatorIntegration:
         num_classes = 3
         model = _make_small_model(num_classes=num_classes)
         evaluator = Vision3DEvaluator(num_classes=num_classes)
-        for i in range(3):
+        for _i in range(3):
             batch = _make_batch(batch_size=2, num_classes=num_classes)
             self._run_validation_pass(batch, model, evaluator)
         assert len(evaluator._all_predictions) == 6
