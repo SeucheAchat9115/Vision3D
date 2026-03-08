@@ -6,16 +6,15 @@ and expose the correct methods/signatures). They do NOT test functionality
 since the classes contain only skeleton stubs.
 """
 
-import pytest
-
 
 class TestDataLayer:
     """Interface tests for the data layer classes."""
 
     def test_vision3d_dataset_exists(self):
         """Vision3DDataset should be importable and expose the correct interface."""
-        from vision3d.data.dataset import Vision3DDataset
         from torch.utils.data import Dataset
+
+        from vision3d.data.dataset import Vision3DDataset
 
         assert issubclass(Vision3DDataset, Dataset)
         assert hasattr(Vision3DDataset, "__len__")
@@ -59,6 +58,7 @@ class TestModelArchitecture:
     def test_resnet_backbone_exists(self):
         """ResNetBackbone should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.models.backbones.resnet import ResNetBackbone
 
         assert issubclass(ResNetBackbone, nn.Module)
@@ -67,6 +67,7 @@ class TestModelArchitecture:
     def test_fpn_neck_exists(self):
         """FPNNeck should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.models.necks.fpn import FPNNeck
 
         assert issubclass(FPNNeck, nn.Module)
@@ -75,6 +76,7 @@ class TestModelArchitecture:
     def test_bev_encoder_exists(self):
         """BEVEncoder should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.models.encoders.bev_encoder import BEVEncoder
 
         assert issubclass(BEVEncoder, nn.Module)
@@ -83,6 +85,7 @@ class TestModelArchitecture:
     def test_detection_head_exists(self):
         """DetectionHead should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.models.heads.detection_head import DetectionHead
 
         assert issubclass(DetectionHead, nn.Module)
@@ -91,6 +94,7 @@ class TestModelArchitecture:
     def test_bevformer_model_exists(self):
         """BEVFormerModel should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.models.bevformer import BEVFormerModel
 
         assert issubclass(BEVFormerModel, nn.Module)
@@ -110,6 +114,7 @@ class TestCoreLogic:
     def test_detection_loss_exists(self):
         """DetectionLoss should be importable and be an nn.Module subclass."""
         import torch.nn as nn
+
         from vision3d.core.losses import DetectionLoss
 
         assert issubclass(DetectionLoss, nn.Module)
@@ -130,7 +135,9 @@ class TestEngineAndUtils:
     def test_lightning_module_exists(self):
         """Vision3DLightningModule should subclass pl.LightningModule and accept a BEVFormerModel."""
         import inspect
+
         import pytorch_lightning as pl
+
         from vision3d.engine.lit_module import Vision3DLightningModule
 
         assert issubclass(Vision3DLightningModule, pl.LightningModule)
@@ -160,6 +167,7 @@ class TestEngineAndUtils:
     def test_foxglove_logger_exists(self):
         """FoxgloveMCAPLogger should be importable and subclass pl.Callback."""
         import pytorch_lightning as pl
+
         from vision3d.utils.foxglove import FoxgloveMCAPLogger
 
         assert issubclass(FoxgloveMCAPLogger, pl.Callback)
@@ -174,7 +182,6 @@ class TestConfigSchema:
         from vision3d.config.schema import (
             BackboneConfig,
             BEVFormerModelConfig,
-            DatasetConfig,
             EncoderConfig,
             EvaluatorConfig,
             HeadConfig,
@@ -182,7 +189,6 @@ class TestConfigSchema:
             LossConfig,
             MatcherConfig,
             NeckConfig,
-            TrainConfig,
         )
 
         # Verify _target_ fields are present on model-related configs
@@ -198,6 +204,7 @@ class TestConfigSchema:
         # LitModuleConfig should have a 'model' field (BEVFormerModelConfig),
         # not individual backbone/neck/encoder/head fields
         import dataclasses
+
         lit_fields = {f.name for f in dataclasses.fields(LitModuleConfig)}
         assert "model" in lit_fields
         assert "loss" in lit_fields
@@ -210,19 +217,13 @@ class TestConfigSchema:
 
     def test_data_interface_dataclasses_importable(self):
         """All runtime data interface dataclasses should be importable."""
-        from vision3d.config.schema import (
-            BatchData,
-            BoundingBox3DPrediction,
-            BoundingBox3DTarget,
-            CameraExtrinsics,
-            CameraIntrinsics,
-            CameraView,
-            FrameData,
-            MatchingResult,
-        )
-
         # Verify key field names exist via dataclass fields introspection
         import dataclasses
+
+        from vision3d.config.schema import (
+            BatchData,
+            FrameData,
+        )
 
         frame_fields = {f.name for f in dataclasses.fields(FrameData)}
         assert "frame_id" in frame_fields

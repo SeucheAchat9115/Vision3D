@@ -111,7 +111,7 @@ class FoxgloveMCAPLogger(pl.Callback):
                             data=pred_bytes,
                             publish_time=ts_ns,
                         )
-                writer.finish()  # type: ignore[no-untyped-call]
+                writer.finish()
         except Exception:
             import logging
 
