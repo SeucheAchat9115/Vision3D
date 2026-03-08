@@ -14,11 +14,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from vision3d.config.schema import BoundingBox3DPrediction
+from tests.integration.helpers import make_batch, make_small_model
+from vision3d.config.schema import BatchData, BoundingBox3DPrediction
 from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.models.bevformer import BEVFormerModel
-from vision3d.config.schema import BatchData
-from tests.integration.helpers import make_batch, make_small_model
 
 
 class TestModelEvaluatorIntegration:

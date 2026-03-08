@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import torch
 
+from tests.integration.helpers import make_frame, make_small_model
 from vision3d.config.schema import BatchData, BoundingBox3DPrediction, BoundingBox3DTarget
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.data.augmentations import DataAugmenter
 from vision3d.data.filters import BoxFilter, ImageFilter
-from tests.integration.helpers import make_batch, make_frame, make_small_model
 
 
 class TestAugmentationModelIntegration:

@@ -20,16 +20,15 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image as PILImage
 from torch.utils.data import DataLoader
 
+from tests.integration.helpers import make_small_model
 from vision3d.config.schema import BatchData, BoundingBox3DPrediction, BoundingBox3DTarget
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.data.dataset import Vision3DDataset
-from tests.integration.helpers import make_small_model
 
 
 def _write_dataset_frame(

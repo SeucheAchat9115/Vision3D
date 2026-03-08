@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import torch
 
+from tests.integration.helpers import make_batch, make_frame, make_small_model
 from vision3d.config.schema import BatchData
 from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.engine.lit_module import Vision3DLightningModule
-from tests.integration.helpers import make_batch, make_frame, make_small_model
 
 
 def _make_lit_module(
@@ -125,4 +125,4 @@ class TestLightningModuleIntegration:
             loss = lit.training_step(batch, batch_idx=i)
             losses.append(loss.item())
         # Verify the loss values are all finite (not stuck at NaN/Inf)
-        assert all(torch.isfinite(torch.tensor(l)) for l in losses)
+        assert all(torch.isfinite(torch.tensor(loss_val)) for loss_val in losses)

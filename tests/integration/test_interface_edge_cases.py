@@ -15,14 +15,13 @@ Covered scenarios:
 
 from __future__ import annotations
 
-import pytest
 import torch
 
+from tests.integration.helpers import make_batch, make_frame, make_small_model
 from vision3d.config.schema import BatchData, BoundingBox3DPrediction
 from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
-from tests.integration.helpers import make_batch, make_frame, make_small_model
 
 
 class TestInterfaceEdgeCases:

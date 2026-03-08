@@ -20,7 +20,6 @@ from vision3d.models.backbones.resnet import ResNetBackbone
 from vision3d.models.encoders.bev_encoder import BEVEncoder
 from vision3d.models.necks.fpn import FPNNeck
 
-
 # ---------------------------------------------------------------------------
 # 1. Backbone + Neck combinations
 # ---------------------------------------------------------------------------

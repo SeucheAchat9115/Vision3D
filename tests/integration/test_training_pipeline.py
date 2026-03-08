@@ -14,11 +14,11 @@ from __future__ import annotations
 import pytest
 import torch
 
+from tests.integration.helpers import make_batch, make_frame, make_small_model
 from vision3d.config.schema import BatchData, BoundingBox3DPrediction
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.models.bevformer import BEVFormerModel
-from tests.integration.helpers import make_batch, make_frame, make_small_model
 
 
 class TestModelMatcherLossIntegration:
@@ -182,7 +182,7 @@ class TestModelMatcherLossIntegration:
         params_after = [p.data for p in model.parameters() if p.requires_grad]
         changed = any(
             not torch.allclose(before, after)
-            for before, after in zip(params_before, params_after)
+            for before, after in zip(params_before, params_after, strict=True)
         )
         assert changed, "No parameter was updated after optimizer.step()"
 

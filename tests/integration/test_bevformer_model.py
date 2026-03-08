@@ -17,8 +17,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from vision3d.config.schema import BoundingBox3DPrediction, BatchData
 from tests.integration.helpers import make_batch, make_small_model
+from vision3d.config.schema import BoundingBox3DPrediction
 
 
 class TestBEVFormerModelIntegration:
