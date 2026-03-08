@@ -9,96 +9,141 @@ batches consumed by the DataLoader.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import torch
 from torch.utils.data import Dataset
 
-from vision3d.config.schema import BatchData, FrameData
+from vision3d.config.schema import (
+    BatchData,
+    BoundingBox3DTarget,
+    CameraExtrinsics,
+    CameraIntrinsics,
+    CameraView,
+    FrameData,
+)
 from vision3d.data.augmentations import DataAugmenter
 from vision3d.data.filters import BoxFilter, ImageFilter
 from vision3d.data.loaders import ImageLoader, JsonLoader
 
 
-class Vision3DDataset(Dataset):
-    """PyTorch Dataset for the Vision3D generic frame format.
-
-    Orchestrates the full data loading pipeline:
-      1. Discover all frame JSON files in `data_root / split`.
-      2. For each `__getitem__` call:
-         a. Load the JSON via `JsonLoader`.
-         b. Load all camera images via `ImageLoader` (multi-threaded).
-         c. Load past-frame JSONs/images for temporal attention.
-         d. Apply `BoxFilter` to discard invalid / out-of-range GT boxes.
-         e. Apply `ImageFilter` to skip frames outside the ODD.
-         f. Apply `DataAugmenter` to produce synchronised 2-D / 3-D augmentations.
-         g. Assemble and return a `FrameData` instance.
-
-    The companion `collate_fn` converts a list of `FrameData` objects to a
-    `BatchData` object that is compatible with the Lightning training loop.
-
-    Args:
-        data_root: Root directory that contains the dataset split subdirectories.
-        split: One of "train", "val", or "test".
-        num_past_frames: How many past frames to include for temporal attention.
-        box_filter: Optional `BoxFilter` instance; uses default settings if None.
-        image_filter: Optional `ImageFilter` instance; uses default settings if None.
-        augmenter: Optional `DataAugmenter`; augmentation is skipped if None.
-        image_size: Target (height, width) tuple for image resizing.
-    """
+class Vision3DDataset(Dataset[FrameData]):
+    """PyTorch Dataset for the Vision3D generic frame format."""
 
     def __init__(
         self,
         data_root: str,
         split: str = "train",
         num_past_frames: int = 2,
-        box_filter: Optional[BoxFilter] = None,
-        image_filter: Optional[ImageFilter] = None,
-        augmenter: Optional[DataAugmenter] = None,
+        box_filter: BoxFilter | None = None,
+        image_filter: ImageFilter | None = None,
+        augmenter: DataAugmenter | None = None,
         image_size: tuple[int, int] = (900, 1600),
     ) -> None:
-        # TODO: store all constructor arguments as instance attributes
-        # TODO: build a sorted list of all JSON frame paths under data_root/split
-        # TODO: build a mapping from frame_id to JSON path for fast past-frame lookup
-        # TODO: initialise JsonLoader, ImageLoader with appropriate parameters
-        # TODO: store the provided (or default) BoxFilter, ImageFilter, DataAugmenter
-        raise NotImplementedError
+        self.data_root = Path(data_root)
+        self.split = split
+        self.num_past_frames = num_past_frames
+        self.box_filter = box_filter if box_filter is not None else BoxFilter()
+        self.image_filter = image_filter if image_filter is not None else ImageFilter()
+        self.augmenter = augmenter
+        self.image_size = image_size
+        split_dir = self.data_root / split
+        self._frame_paths = sorted(split_dir.glob("*.json")) if split_dir.exists() else []
+        self._frame_id_to_path: dict[str, Path] = {p.stem: p for p in self._frame_paths}
+        self._json_loader = JsonLoader(validate_schema=True)
+        self._image_loader = ImageLoader(num_threads=4, target_size=image_size, normalize=True)
 
     def __len__(self) -> int:
-        """Return the total number of frames in this split."""
-        # TODO: return the length of the discovered frame list
-        raise NotImplementedError
+        return len(self._frame_paths)
 
     def __getitem__(self, index: int) -> FrameData:
-        """Load, filter, and augment a single frame.
-
-        Steps:
-          1. Retrieve the JSON path for `index`.
-          2. Parse the JSON with `JsonLoader` to get metadata, calibration, and annotations.
-          3. Load all camera images with `ImageLoader`.
-          4. Recursively load `num_past_frames` past frames (JSONs + images).
-          5. Apply `BoxFilter` to the ground-truth annotation list.
-          6. Apply `ImageFilter`; return an empty / flagged frame if filtered out.
-          7. Apply `DataAugmenter`; augmenter must update camera parameters in-place.
-          8. Assemble and return a `FrameData` dataclass.
-        """
-        # TODO: implement the full loading pipeline described above
-        raise NotImplementedError
+        json_path = self._frame_paths[index]
+        data = self._json_loader.load(json_path)
+        camera_paths = {
+            name: str(self.data_root / cam["image_path"]) for name, cam in data["cameras"].items()
+        }
+        images = self._image_loader.load(camera_paths)
+        cameras: dict[str, CameraView] = {}
+        for cam_name, cam_data in data["cameras"].items():
+            intr = torch.tensor(cam_data["intrinsics"], dtype=torch.float32)
+            trans = torch.tensor(cam_data["sensor2ego_translation"], dtype=torch.float32)
+            rot = torch.tensor(cam_data["sensor2ego_rotation"], dtype=torch.float32)
+            cameras[cam_name] = CameraView(
+                image=images[cam_name],
+                intrinsics=CameraIntrinsics(matrix=intr),
+                extrinsics=CameraExtrinsics(translation=trans, rotation=rot),
+                name=cam_name,
+            )
+        annotations = data.get("annotations", [])
+        if annotations:
+            boxes = torch.tensor([ann["bbox_3d"] for ann in annotations], dtype=torch.float32)
+            labels = torch.zeros(len(annotations), dtype=torch.long)
+            instance_ids = [ann["instance_id"] for ann in annotations]
+            targets: BoundingBox3DTarget = BoundingBox3DTarget(
+                boxes=boxes, labels=labels, instance_ids=instance_ids
+            )
+        else:
+            targets = BoundingBox3DTarget(
+                boxes=torch.zeros((0, 10), dtype=torch.float32),
+                labels=torch.zeros(0, dtype=torch.long),
+                instance_ids=[],
+            )
+        metadata = data.get("metadata", {})
+        targets = self.box_filter.filter(targets, metadata)
+        if not self.image_filter.should_keep(metadata, targets.boxes.shape[0]):
+            targets = BoundingBox3DTarget(
+                boxes=torch.zeros((0, 10), dtype=torch.float32),
+                labels=torch.zeros(0, dtype=torch.long),
+                instance_ids=[],
+            )
+        past_frame_ids = data.get("past_frame_ids", [])[: self.num_past_frames]
+        past_frames: list[FrameData] = []
+        for past_id in past_frame_ids:
+            if past_id in self._frame_id_to_path:
+                try:
+                    past_data = self._json_loader.load(self._frame_id_to_path[past_id])
+                    past_cam_paths = {
+                        name: str(self.data_root / cam["image_path"])
+                        for name, cam in past_data["cameras"].items()
+                    }
+                    past_images = self._image_loader.load(past_cam_paths)
+                    past_cameras: dict[str, CameraView] = {}
+                    for cn, cd in past_data["cameras"].items():
+                        past_cameras[cn] = CameraView(
+                            image=past_images[cn],
+                            intrinsics=CameraIntrinsics(
+                                matrix=torch.tensor(cd["intrinsics"], dtype=torch.float32)
+                            ),
+                            extrinsics=CameraExtrinsics(
+                                translation=torch.tensor(
+                                    cd["sensor2ego_translation"], dtype=torch.float32
+                                ),
+                                rotation=torch.tensor(
+                                    cd["sensor2ego_rotation"], dtype=torch.float32
+                                ),
+                            ),
+                            name=cn,
+                        )
+                    past_frames.append(
+                        FrameData(
+                            frame_id=past_id,
+                            timestamp=past_data.get("timestamp", 0.0),
+                            cameras=past_cameras,
+                        )
+                    )
+                except Exception:
+                    pass
+        frame = FrameData(
+            frame_id=data["frame_id"],
+            timestamp=data.get("timestamp", 0.0),
+            cameras=cameras,
+            targets=targets,
+            past_frames=past_frames,
+        )
+        if self.augmenter is not None:
+            frame = self.augmenter(frame)
+        return frame
 
     @staticmethod
-    def collate_fn(frames: List[FrameData]) -> BatchData:
-        """Convert a list of FrameData objects into a single BatchData.
-
-        Used as the `collate_fn` argument to `torch.utils.data.DataLoader`.
-        Handles variable-length annotation lists by padding or stacking tensors
-        appropriately.
-
-        Args:
-            frames: List of FrameData instances from `__getitem__`.
-
-        Returns:
-            A `BatchData` instance with `batch_size = len(frames)`.
-        """
-        # TODO: stack / pad all tensor fields across the batch dimension
-        # TODO: return BatchData(batch_size=len(frames), frames=frames)
-        raise NotImplementedError
+    def collate_fn(frames: list[FrameData]) -> BatchData:
+        """Convert a list of FrameData objects into a single BatchData."""
+        return BatchData(batch_size=len(frames), frames=frames)

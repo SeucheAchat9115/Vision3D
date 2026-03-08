@@ -3,20 +3,9 @@ Detection losses for Vision3D.
 
 Provides `DetectionLoss`, which computes the total training loss given
 predictions, ground-truth targets, and Hungarian matching results.
-
-Loss components:
-  - **Classification loss**: Sigmoid Focal Loss applied to *all* predictions.
-    Matched predictions are trained toward their assigned GT class; unmatched
-    predictions are trained toward a background "no-object" label.
-  - **Box regression loss (L1)**: L1 distance over all 10 box parameters
-    applied only to matched predictions.
-  - **Box regression loss (GIoU)**: A GIoU-like term on the matched boxes to
-    stabilise regression of spatially overlapping boxes.
 """
 
 from __future__ import annotations
-
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -30,24 +19,7 @@ from vision3d.config.schema import (
 
 
 class DetectionLoss(nn.Module):
-    """Computes the combined classification and bounding-box regression loss.
-
-    Follows the DETR-style end-to-end training objective:
-      1. Use `MatchingResult` to identify which predictions supervise which GT boxes.
-      2. Compute Focal Loss over all predictions for classification.
-      3. Compute L1 loss over matched boxes for box regression.
-      4. Compute GIoU loss over matched boxes for geometric consistency.
-      5. Return a weighted sum as the total scalar loss, plus a dict of
-         individual loss components for logging.
-
-    Args:
-        num_classes: Number of object categories (excluding background).
-        cls_weight: Scalar weight applied to the classification loss term.
-        bbox_weight: Scalar weight applied to the L1 regression loss term.
-        giou_weight: Scalar weight applied to the GIoU loss term.
-        focal_alpha: Alpha parameter for Focal Loss class-imbalance correction.
-        focal_gamma: Gamma parameter for Focal Loss easy-example down-weighting.
-    """
+    """Computes the combined classification and bounding-box regression loss."""
 
     def __init__(
         self,
@@ -59,112 +31,108 @@ class DetectionLoss(nn.Module):
         focal_gamma: float = 2.0,
     ) -> None:
         super().__init__()
-        # TODO: store all hyperparameters as instance attributes
-        raise NotImplementedError
+        self.num_classes = num_classes
+        self.cls_weight = cls_weight
+        self.bbox_weight = bbox_weight
+        self.giou_weight = giou_weight
+        self.focal_alpha = focal_alpha
+        self.focal_gamma = focal_gamma
 
     def forward(
         self,
-        predictions: List[BoundingBox3DPrediction],
-        targets: List[BoundingBox3DTarget],
-        matches: List[MatchingResult],
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Compute the total loss for a batch.
-
-        Args:
-            predictions: List of per-frame model predictions (length = batch_size).
-            targets: List of per-frame ground-truth annotations (length = batch_size).
-            matches: List of per-frame matching results from `HungarianMatcher`
-                (length = batch_size).
-
-        Returns:
-            Tuple of:
-              - `total_loss`: Scalar tensor used for `loss.backward()`.
-              - `loss_dict`: Dict with keys "loss_cls", "loss_bbox", "loss_giou"
-                and their unweighted scalar values for TensorBoard logging.
-        """
-        # TODO: call self._classification_loss(predictions, targets, matches)
-        # TODO: call self._bbox_l1_loss(predictions, targets, matches)
-        # TODO: call self._giou_loss(predictions, targets, matches)
-        # TODO: combine: total = cls_weight*loss_cls + bbox_weight*loss_bbox + giou_weight*loss_giou
-        # TODO: return (total_loss, {"loss_cls": ..., "loss_bbox": ..., "loss_giou": ...})
-        raise NotImplementedError
+        predictions: list[BoundingBox3DPrediction],
+        targets: list[BoundingBox3DTarget],
+        matches: list[MatchingResult],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """Compute the total loss for a batch."""
+        loss_cls = self._classification_loss(predictions, targets, matches)
+        loss_bbox = self._bbox_l1_loss(predictions, targets, matches)
+        loss_giou = self._giou_loss(predictions, targets, matches)
+        total = (
+            self.cls_weight * loss_cls + self.bbox_weight * loss_bbox + self.giou_weight * loss_giou
+        )
+        return total, {"loss_cls": loss_cls, "loss_bbox": loss_bbox, "loss_giou": loss_giou}
 
     def _classification_loss(
         self,
-        predictions: List[BoundingBox3DPrediction],
-        targets: List[BoundingBox3DTarget],
-        matches: List[MatchingResult],
+        predictions: list[BoundingBox3DPrediction],
+        targets: list[BoundingBox3DTarget],
+        matches: list[MatchingResult],
     ) -> torch.Tensor:
-        """Compute sigmoid Focal Loss across all queries in the batch.
-
-        All `num_queries * batch_size` predictions are evaluated:
-          - Matched predictions: one-hot target for the assigned GT class.
-          - Unmatched predictions: all-zeros target (background).
-
-        Args:
-            predictions: Per-frame predictions.
-            targets: Per-frame ground-truth.
-            matches: Per-frame Hungarian matching results.
-
-        Returns:
-            Scalar focal loss averaged over all predictions and classes.
-        """
-        # TODO: build target class probability tensors for all predictions
-        #       (batch_size, num_queries, num_classes) — zeros for background,
-        #       one-hot for matched predictions
-        # TODO: apply sigmoid focal loss formula:
-        #       FL = -alpha * (1 - p)^gamma * log(p) for positives
-        #            -(1-alpha) * p^gamma * log(1-p) for negatives
-        # TODO: return mean over all elements
-        raise NotImplementedError
+        """Compute sigmoid Focal Loss across all queries in the batch."""
+        all_logits = []
+        all_targets_cls = []
+        for pred, tgt, match in zip(predictions, targets, matches, strict=False):
+            num_queries = pred.boxes.shape[0]
+            target_cls = torch.zeros(num_queries, self.num_classes, device=pred.boxes.device)
+            if match.pred_indices.numel() > 0:
+                pi = match.pred_indices
+                gi = match.gt_indices
+                cls_idx = tgt.labels[gi].long()
+                for j in range(pi.shape[0]):
+                    target_cls[pi[j], cls_idx[j]] = 1.0
+            if pred.scores.dim() == 1:
+                logits = pred.scores.unsqueeze(-1).expand(-1, self.num_classes)
+            else:
+                logits = pred.scores
+            all_logits.append(logits)
+            all_targets_cls.append(target_cls)
+        logits_cat = torch.cat(all_logits, dim=0)
+        tgt_cat = torch.cat(all_targets_cls, dim=0)
+        p = torch.sigmoid(logits_cat)
+        ce = F.binary_cross_entropy_with_logits(logits_cat, tgt_cat, reduction="none")
+        p_t = p * tgt_cat + (1 - p) * (1 - tgt_cat)
+        alpha_t = self.focal_alpha * tgt_cat + (1 - self.focal_alpha) * (1 - tgt_cat)
+        focal_weight = alpha_t * (1 - p_t) ** self.focal_gamma
+        return (focal_weight * ce).mean()
 
     def _bbox_l1_loss(
         self,
-        predictions: List[BoundingBox3DPrediction],
-        targets: List[BoundingBox3DTarget],
-        matches: List[MatchingResult],
+        predictions: list[BoundingBox3DPrediction],
+        targets: list[BoundingBox3DTarget],
+        matches: list[MatchingResult],
     ) -> torch.Tensor:
-        """Compute L1 loss on matched box parameter vectors.
-
-        Only matched prediction–GT pairs contribute to this loss.
-
-        Args:
-            predictions: Per-frame predictions.
-            targets: Per-frame ground-truth.
-            matches: Per-frame matching results.
-
-        Returns:
-            Scalar L1 loss averaged over matched pairs and box parameters.
-        """
-        # TODO: for each frame, gather matched predicted boxes using match.pred_indices
-        # TODO: gather corresponding GT boxes using match.gt_indices
-        # TODO: compute F.l1_loss between the gathered tensors
-        # TODO: return mean over all matched pairs
-        raise NotImplementedError
+        """Compute L1 loss on matched box parameter vectors."""
+        losses = []
+        for pred, tgt, match in zip(predictions, targets, matches, strict=False):
+            if match.pred_indices.numel() == 0:
+                losses.append(pred.boxes.sum() * 0.0)
+                continue
+            pred_boxes = pred.boxes[match.pred_indices]
+            gt_boxes = tgt.boxes[match.gt_indices]
+            losses.append(F.l1_loss(pred_boxes, gt_boxes))
+        return torch.stack(losses).mean()
 
     def _giou_loss(
         self,
-        predictions: List[BoundingBox3DPrediction],
-        targets: List[BoundingBox3DTarget],
-        matches: List[MatchingResult],
+        predictions: list[BoundingBox3DPrediction],
+        targets: list[BoundingBox3DTarget],
+        matches: list[MatchingResult],
     ) -> torch.Tensor:
-        """Compute a GIoU-inspired geometric consistency loss on matched boxes.
-
-        Operates on the (x, y, z, w, l, h) subset of the 10-DOF box parameters
-        to penalise predictions that are spatially inconsistent with their
-        assigned GT boxes (beyond what L1 alone would penalise).
-
-        Args:
-            predictions: Per-frame predictions.
-            targets: Per-frame ground-truth.
-            matches: Per-frame matching results.
-
-        Returns:
-            Scalar GIoU loss averaged over matched pairs.
-        """
-        # TODO: extract (x, y, z, w, l, h) from matched predicted and GT boxes
-        # TODO: compute axis-aligned 3-D IoU between predicted and GT boxes
-        # TODO: compute the enclosing box volume for the GIoU penalty term
-        # TODO: GIoU = IoU - (enclosing_vol - union_vol) / enclosing_vol
-        # TODO: loss = 1 - GIoU; return mean over matched pairs
-        raise NotImplementedError
+        """Compute a GIoU-inspired geometric consistency loss on matched boxes."""
+        losses = []
+        for pred, tgt, match in zip(predictions, targets, matches, strict=False):
+            if match.pred_indices.numel() == 0:
+                losses.append(pred.boxes.sum() * 0.0)
+                continue
+            pred_boxes = pred.boxes[match.pred_indices][:, :6]
+            gt_boxes = tgt.boxes[match.gt_indices][:, :6]
+            p_min = pred_boxes[:, :3] - pred_boxes[:, 3:] / 2
+            p_max = pred_boxes[:, :3] + pred_boxes[:, 3:] / 2
+            g_min = gt_boxes[:, :3] - gt_boxes[:, 3:] / 2
+            g_max = gt_boxes[:, :3] + gt_boxes[:, 3:] / 2
+            inter_min = torch.max(p_min, g_min)
+            inter_max = torch.min(p_max, g_max)
+            inter_dims = (inter_max - inter_min).clamp(min=0)
+            inter_vol = inter_dims[:, 0] * inter_dims[:, 1] * inter_dims[:, 2]
+            p_vol = pred_boxes[:, 3] * pred_boxes[:, 4] * pred_boxes[:, 5]
+            g_vol = gt_boxes[:, 3] * gt_boxes[:, 4] * gt_boxes[:, 5]
+            union_vol = p_vol + g_vol - inter_vol + 1e-8
+            iou = inter_vol / union_vol
+            enc_min = torch.min(p_min, g_min)
+            enc_max = torch.max(p_max, g_max)
+            enc_dims = (enc_max - enc_min).clamp(min=0)
+            enc_vol = enc_dims[:, 0] * enc_dims[:, 1] * enc_dims[:, 2] + 1e-8
+            giou = iou - (enc_vol - union_vol) / enc_vol
+            losses.append((1 - giou).mean())
+        return torch.stack(losses).mean()

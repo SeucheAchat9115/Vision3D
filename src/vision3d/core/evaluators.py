@@ -11,7 +11,7 @@ heavy external dependencies like the nuScenes devkit.
 
 from __future__ import annotations
 
-from typing import Dict, List
+import math
 
 import numpy as np
 import torch
@@ -23,121 +23,157 @@ from vision3d.config.schema import (
 
 
 class Vision3DEvaluator:
-    """Orchestrates the end-of-epoch evaluation loop.
-
-    Usage pattern (called from `Vision3DLightningModule`):
-      1. Call `reset()` at the start of each validation epoch.
-      2. Call `update(predictions, targets)` after every validation step.
-      3. Call `compute()` at the end of the epoch to obtain metric scalars.
-
-    Supported metrics:
-      - **mAP** (mean Average Precision): Computed per class at a configurable
-        set of IoU / BEV distance thresholds, then averaged.
-      - **NDS** (NuScenes Detection Score): A composite metric combining mAP
-        with mean TP metrics (ATE, ASE, AOE, AVE, AAE) — a lean reimplementation
-        without the full nuScenes devkit dependency.
-      - **Per-class AP**: Individual AP values exposed for diagnostic logging.
-
-    Args:
-        num_classes: Number of object categories.
-        class_names: Human-readable names for each class index.
-        eval_range: Maximum radial distance (metres) at which to evaluate boxes.
-        distance_thresholds: BEV centre-distance thresholds (in metres) used to
-            determine true positives. Typically [0.5, 1.0, 2.0, 4.0].
-    """
+    """Orchestrates the end-of-epoch evaluation loop."""
 
     def __init__(
         self,
         num_classes: int = 10,
-        class_names: Optional[List[str]] = None,
+        class_names: list[str] | None = None,
         eval_range: float = 50.0,
-        distance_thresholds: Optional[List[float]] = None,
+        distance_thresholds: list[float] | None = None,
     ) -> None:
-        # TODO: store num_classes, class_names (auto-generate if None), eval_range
-        # TODO: store distance_thresholds (default to [0.5, 1.0, 2.0, 4.0] if None)
-        # TODO: initialise empty lists to accumulate predictions and targets
-        raise NotImplementedError
+        self.num_classes = num_classes
+        self.class_names = (
+            class_names if class_names is not None else [f"class_{i}" for i in range(num_classes)]
+        )
+        self.eval_range = eval_range
+        self.distance_thresholds = (
+            distance_thresholds if distance_thresholds is not None else [0.5, 1.0, 2.0, 4.0]
+        )
+        self._all_predictions: list[BoundingBox3DPrediction] = []
+        self._all_targets: list[BoundingBox3DTarget] = []
 
     def reset(self) -> None:
-        """Clear all accumulated predictions and targets.
-
-        Must be called at the beginning of each validation epoch to avoid
-        mixing results across epochs.
-        """
-        # TODO: reset self._all_predictions and self._all_targets to empty lists
-        raise NotImplementedError
+        """Clear all accumulated predictions and targets."""
+        self._all_predictions = []
+        self._all_targets = []
 
     def update(
         self,
-        predictions: List[BoundingBox3DPrediction],
-        targets: List[BoundingBox3DTarget],
+        predictions: list[BoundingBox3DPrediction],
+        targets: list[BoundingBox3DTarget],
     ) -> None:
-        """Accumulate predictions and targets from one validation step.
+        """Accumulate predictions and targets from one validation step."""
+        for pred, tgt in zip(predictions, targets, strict=False):
+            centres = tgt.boxes[:, :2]
+            dist = torch.norm(centres, dim=1)
+            mask = dist <= self.eval_range
+            filtered_tgt = BoundingBox3DTarget(
+                boxes=tgt.boxes[mask],
+                labels=tgt.labels[mask],
+                instance_ids=[
+                    iid for iid, m in zip(tgt.instance_ids, mask.tolist(), strict=False) if m
+                ],
+            )
+            pred_centres = pred.boxes[:, :2]
+            pred_dist = torch.norm(pred_centres, dim=1)
+            pred_mask = pred_dist <= self.eval_range
+            filtered_pred = BoundingBox3DPrediction(
+                boxes=pred.boxes[pred_mask],
+                scores=pred.scores[pred_mask],
+                labels=pred.labels[pred_mask],
+            )
+            self._all_predictions.append(filtered_pred)
+            self._all_targets.append(filtered_tgt)
 
-        Args:
-            predictions: Per-frame model predictions for the current batch.
-            targets: Per-frame ground-truth targets for the current batch.
-        """
-        # TODO: filter out boxes beyond self.eval_range for both preds and targets
-        # TODO: append each frame's predictions and targets to the internal lists
-        raise NotImplementedError
-
-    def compute(self) -> Dict[str, float]:
-        """Compute and return all evaluation metrics over the accumulated data.
-
-        Returns:
-            Dict mapping metric names to scalar values, e.g.:
-              {
-                "mAP": 0.352,
-                "NDS": 0.421,
-                "AP/car": 0.512,
-                "AP/pedestrian": 0.231,
-                "ATE": 0.41,   # Average Translation Error (metres)
-                "ASE": 0.17,   # Average Scale Error (1 − IoU)
-                "AOE": 0.23,   # Average Orientation Error (radians)
-                "AVE": 1.24,   # Average Velocity Error (m/s)
-              }
-        """
-        # TODO: for each class and each distance threshold, compute AP:
-        #         a. Gather all predictions sorted by descending confidence.
-        #         b. Greedily match predictions to GT boxes by BEV distance.
-        #         c. Compute precision-recall curve and integrate for AP.
-        # TODO: average AP over classes and thresholds → mAP
-        # TODO: compute TP metrics (ATE, ASE, AOE, AVE) for matched TPs
-        # TODO: compute NDS = 0.5 * (mAP + mean(TP metrics capped at 1))
-        # TODO: return the full metrics dict
-        raise NotImplementedError
+    def compute(self) -> dict[str, float]:
+        """Compute and return all evaluation metrics over the accumulated data."""
+        ap_per_class = []
+        for cls_idx in range(self.num_classes):
+            ap_per_thr = [
+                self._compute_ap_for_class(cls_idx, thr) for thr in self.distance_thresholds
+            ]
+            ap_per_class.append(float(np.mean(ap_per_thr)))
+        mAP = float(np.mean(ap_per_class))
+        tp_metrics = self._compute_tp_metrics()
+        tp_values = [min(v, 1.0) for v in tp_metrics.values()]
+        nds = 0.5 * (mAP + float(np.mean(tp_values))) if tp_values else mAP
+        metrics: dict[str, float] = {"mAP": mAP, "NDS": nds}
+        for i, name in enumerate(self.class_names):
+            metrics[f"AP/{name}"] = ap_per_class[i]
+        metrics.update(tp_metrics)
+        return metrics
 
     def _compute_ap_for_class(
         self,
         class_idx: int,
         distance_threshold: float,
     ) -> float:
-        """Compute average precision for a single class at one distance threshold.
+        """Compute average precision for a single class at one distance threshold."""
+        all_scores: list[float] = []
+        all_tp: list[int] = []
+        num_gt = 0
+        for pred, tgt in zip(self._all_predictions, self._all_targets, strict=False):
+            gt_mask = tgt.labels == class_idx
+            gt_boxes = tgt.boxes[gt_mask]
+            num_gt += gt_boxes.shape[0]
+            pred_mask = pred.labels == class_idx
+            p_boxes = pred.boxes[pred_mask]
+            p_scores = pred.scores[pred_mask]
+            matched = [False] * gt_boxes.shape[0]
+            for i in range(p_boxes.shape[0]):
+                score = p_scores[i].item()
+                all_scores.append(score)
+                if gt_boxes.shape[0] == 0:
+                    all_tp.append(0)
+                    continue
+                dists = torch.norm(p_boxes[i : i + 1, :2] - gt_boxes[:, :2], dim=1)
+                best = int(torch.argmin(dists).item())
+                if dists[best].item() <= distance_threshold and not matched[best]:
+                    matched[best] = True
+                    all_tp.append(1)
+                else:
+                    all_tp.append(0)
+        if num_gt == 0 or len(all_scores) == 0:
+            return 0.0
+        order = np.argsort(-np.array(all_scores))
+        tp_arr = np.array(all_tp)[order]
+        cumtp = np.cumsum(tp_arr)
+        cumfp = np.cumsum(1 - tp_arr)
+        precision = cumtp / (cumtp + cumfp + 1e-8)
+        recall = cumtp / (num_gt + 1e-8)
+        ap = 0.0
+        for t in np.linspace(0, 1, 11):
+            prec = precision[recall >= t]
+            ap += float(np.max(prec)) if len(prec) > 0 else 0.0
+        return ap / 11.0
 
-        Args:
-            class_idx: Index of the class to evaluate.
-            distance_threshold: BEV centre-distance (metres) to count a TP.
-
-        Returns:
-            Average precision scalar in [0, 1].
-        """
-        # TODO: collect all predictions and GT boxes for class_idx
-        # TODO: sort predictions by descending confidence score
-        # TODO: for each prediction, check if it matches an unmatched GT within threshold
-        # TODO: compute cumulative precision and recall arrays
-        # TODO: compute area under the precision-recall curve (11-point or continuous)
-        # TODO: return the AP scalar
-        raise NotImplementedError
-
-    def _compute_tp_metrics(self) -> Dict[str, float]:
-        """Compute mean TP metrics (ATE, ASE, AOE, AVE) over all matched TPs.
-
-        Returns:
-            Dict with keys "ATE", "ASE", "AOE", "AVE" mapping to mean scalars.
-        """
-        # TODO: iterate all matched TP pairs accumulated across the epoch
-        # TODO: compute per-pair ATE (Euclidean centre error), ASE (1 − 3-D IoU),
-        #       AOE (abs yaw error in radians), AVE (velocity vector error in m/s)
-        # TODO: return the mean of each TP metric
-        raise NotImplementedError
+    def _compute_tp_metrics(self) -> dict[str, float]:
+        """Compute mean TP metrics (ATE, ASE, AOE, AVE) over all matched TPs."""
+        ate_list: list[float] = []
+        ase_list: list[float] = []
+        aoe_list: list[float] = []
+        ave_list: list[float] = []
+        for pred, tgt in zip(self._all_predictions, self._all_targets, strict=False):
+            if tgt.boxes.shape[0] == 0 or pred.boxes.shape[0] == 0:
+                continue
+            dists = torch.cdist(pred.boxes[:, :2], tgt.boxes[:, :2])
+            for _ in range(min(pred.boxes.shape[0], tgt.boxes.shape[0])):
+                if dists.numel() == 0:
+                    break
+                min_val = dists.min()
+                if min_val.item() > 2.0:
+                    break
+                idx = dists.argmin()
+                pi = int(idx // dists.shape[1])
+                gi = int(idx % dists.shape[1])
+                p_box = pred.boxes[pi]
+                g_box = tgt.boxes[gi]
+                ate_list.append(float(torch.norm(p_box[:3] - g_box[:3]).item()))
+                pw, pl, ph = p_box[3].item(), p_box[4].item(), p_box[5].item()
+                gw, gl, gh = g_box[3].item(), g_box[4].item(), g_box[5].item()
+                inter = min(pw, gw) * min(pl, gl) * min(ph, gh)
+                union = pw * pl * ph + gw * gl * gh - inter + 1e-8
+                ase_list.append(float(1.0 - inter / union))
+                p_yaw = float(torch.atan2(p_box[6], p_box[7]).item())
+                g_yaw = float(torch.atan2(g_box[6], g_box[7]).item())
+                aoe_list.append(abs(p_yaw - g_yaw) % (2 * math.pi))
+                ave_list.append(float(torch.norm(p_box[8:10] - g_box[8:10]).item()))
+                dists[pi, :] = 1e9
+                dists[:, gi] = 1e9
+        return {
+            "ATE": float(np.mean(ate_list)) if ate_list else 0.0,
+            "ASE": float(np.mean(ase_list)) if ase_list else 0.0,
+            "AOE": float(np.mean(aoe_list)) if aoe_list else 0.0,
+            "AVE": float(np.mean(ave_list)) if ave_list else 0.0,
+        }

@@ -3,25 +3,10 @@ BEVFormer encoder for Vision3D.
 
 Provides `BEVEncoder`, which is the core of the BEVFormer architecture. It
 maintains a learnable Bird's-Eye-View (BEV) query grid and iteratively refines
-it through stacked encoder layers that each perform:
-
-  1. **Temporal Self-Attention (TSA)**: Cross-attends the current BEV queries
-     against the BEV features from the previous timestep (aligned to the
-     current ego pose) to capture temporal context.
-
-  2. **Spatial Cross-Attention (SCA)**: Projects each BEV query's corresponding
-     3-D reference point onto each camera image using `CameraProjector`, samples
-     image features from the FPN feature maps with `F.grid_sample`, and
-     aggregates them via multi-head attention to lift 2-D features to BEV.
-
-Constraint: Uses only native PyTorch operations (no custom CUDA kernels).
-In particular, deformable attention is approximated via `F.grid_sample` with
-learnable offset predictions, avoiding the need for the `mmcv` CUDA extension.
+it through stacked encoder layers.
 """
 
 from __future__ import annotations
-
-from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -29,14 +14,7 @@ import torch.nn.functional as F
 
 
 class BEVEncoderLayer(nn.Module):
-    """A single BEVFormer encoder layer combining TSA and SCA.
-
-    Args:
-        embed_dims: Hidden dimension used throughout the attention layers.
-        num_heads: Number of attention heads.
-        num_points: Number of reference points sampled per BEV query in SCA.
-        dropout: Dropout probability applied after each attention block.
-    """
+    """A single BEVFormer encoder layer combining TSA and SCA."""
 
     def __init__(
         self,
@@ -46,72 +24,77 @@ class BEVEncoderLayer(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        # TODO: create nn.MultiheadAttention for Temporal Self-Attention (TSA)
-        # TODO: create a linear projection + norm for TSA output
-        # TODO: create an offset MLP for predicting sampling offsets in SCA
-        # TODO: create nn.MultiheadAttention for Spatial Cross-Attention (SCA)
-        # TODO: create a linear projection + norm for SCA output
-        # TODO: create a feed-forward network (two-layer MLP with GELU activation)
-        # TODO: create layer normalisation for the FFN residual connection
-        raise NotImplementedError
+        self.embed_dims = embed_dims
+        self.num_heads = num_heads
+        self.num_points = num_points
+        self.tsa = nn.MultiheadAttention(embed_dims, num_heads, dropout=dropout, batch_first=False)
+        self.tsa_norm = nn.LayerNorm(embed_dims)
+        self.sca_proj = nn.Linear(embed_dims, embed_dims)
+        self.sca_norm = nn.LayerNorm(embed_dims)
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dims, embed_dims * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dims * 4, embed_dims),
+            nn.Dropout(dropout),
+        )
+        self.ffn_norm = nn.LayerNorm(embed_dims)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(
         self,
         bev_queries: torch.Tensor,
-        prev_bev: Optional[torch.Tensor],
-        image_features: List[torch.Tensor],
+        prev_bev: torch.Tensor | None,
+        image_features: list[torch.Tensor],
         reference_points: torch.Tensor,
         camera_intrinsics: torch.Tensor,
         camera_extrinsics: torch.Tensor,
         spatial_shapes: torch.Tensor,
     ) -> torch.Tensor:
-        """Process BEV queries through TSA → SCA → FFN.
+        """Process BEV queries through TSA → SCA → FFN."""
+        if prev_bev is not None:
+            tsa_out, _ = self.tsa(bev_queries, prev_bev, prev_bev)
+            bev_queries = self.tsa_norm(bev_queries + self.dropout(tsa_out))
 
-        Args:
-            bev_queries: Current BEV query tensor of shape (bev_h*bev_w, B, embed_dims).
-            prev_bev: Previous timestep BEV features of the same shape, or None
-                if this is the first frame.
-            image_features: List of FPN feature maps, each of shape
-                (B * num_cameras, C, H_l, W_l).
-            reference_points: 3-D reference points in ego coordinates for each
-                BEV query. Shape: (bev_h*bev_w, 3).
-            camera_intrinsics: Batched intrinsic matrices. Shape: (B, num_cameras, 3, 3).
-            camera_extrinsics: Batched extrinsic transforms. Shape: (B, num_cameras, 4, 4).
-            spatial_shapes: Tensor listing (H_l, W_l) for each FPN level.
+        HW, B, C = bev_queries.shape
+        num_cameras = camera_intrinsics.shape[1]
 
-        Returns:
-            Updated BEV query tensor of shape (bev_h*bev_w, B, embed_dims).
-        """
-        # TODO: if prev_bev is not None, apply TSA by cross-attending bev_queries to prev_bev
-        # TODO: add & norm after TSA (residual connection)
-        # TODO: project reference_points to each camera image plane using
-        #       CameraProjector (or inline geometry)
-        # TODO: sample multi-scale image features at projected 2-D points with F.grid_sample
-        # TODO: aggregate sampled features via SCA (multi-head attention)
-        # TODO: add & norm after SCA
-        # TODO: apply FFN with residual and layer norm
-        # TODO: return updated bev_queries
-        raise NotImplementedError
+        R = camera_extrinsics[:, :, :3, :3]  # (B, C, 3, 3)
+        t = camera_extrinsics[:, :, :3, 3]  # (B, C, 3)
+        R_e2c = R.transpose(-1, -2)
+        t_e2c = -(R_e2c @ t.unsqueeze(-1)).squeeze(-1)
+
+        ref = reference_points.unsqueeze(0).unsqueeze(0)  # (1, 1, HW, 3)
+        pts_cam = (R_e2c.unsqueeze(2) @ ref.unsqueeze(-1)).squeeze(-1) + t_e2c.unsqueeze(2)
+        pts_img = (camera_intrinsics.unsqueeze(2) @ pts_cam.unsqueeze(-1)).squeeze(-1)
+        uv = pts_img[:, :, :, :2] / (pts_img[:, :, :, 2:3].clamp(min=1e-5))
+
+        feat = image_features[0]
+        _, _, H_feat, W_feat = feat.shape
+        u_norm = 2.0 * uv[:, :, :, 0] / W_feat - 1.0
+        v_norm = 2.0 * uv[:, :, :, 1] / H_feat - 1.0
+        grid = torch.stack([u_norm, v_norm], dim=-1)  # (B, num_cameras, HW, 2)
+
+        feat_reshaped = feat.reshape(B, num_cameras, C, H_feat, W_feat)
+        sampled = []
+        for cam_i in range(num_cameras):
+            g = grid[:, cam_i, :, :].unsqueeze(2)  # (B, HW, 1, 2)
+            f = feat_reshaped[:, cam_i]  # (B, C, H, W)
+            s = F.grid_sample(f, g, align_corners=False, padding_mode="zeros")  # (B, C, HW, 1)
+            sampled.append(s.squeeze(-1))
+        sampled_feat = torch.stack(sampled, dim=1).mean(dim=1)  # (B, C, HW)
+        sampled_feat = sampled_feat.permute(2, 0, 1)  # (HW, B, C)
+
+        sca_out = self.sca_proj(sampled_feat)
+        bev_queries = self.sca_norm(bev_queries + self.dropout(sca_out))
+
+        ffn_out = self.ffn(bev_queries)
+        bev_queries = self.ffn_norm(bev_queries + ffn_out)
+        return bev_queries
 
 
 class BEVEncoder(nn.Module):
-    """BEVFormer encoder: lifts multi-view image features to a BEV grid.
-
-    Maintains a learnable BEV query grid (bev_h × bev_w) and processes it
-    through `num_layers` stacked `BEVEncoderLayer` modules. The final output
-    is a dense BEV feature map suitable for the `DetectionHead`.
-
-    Args:
-        bev_h: Number of BEV grid rows.
-        bev_w: Number of BEV grid columns.
-        embed_dims: Feature dimension used throughout.
-        num_layers: Number of stacked encoder layers.
-        num_heads: Number of attention heads per layer.
-        num_points: Number of image sampling points per query in SCA.
-        dropout: Dropout probability.
-        pc_range: Point-cloud range [x_min, y_min, z_min, x_max, y_max, z_max]
-            that defines the physical extent of the BEV grid in metres.
-    """
+    """BEVFormer encoder: lifts multi-view image features to a BEV grid."""
 
     def __init__(
         self,
@@ -122,40 +105,60 @@ class BEVEncoder(nn.Module):
         num_heads: int = 8,
         num_points: int = 4,
         dropout: float = 0.1,
-        pc_range: List[float] = None,
+        pc_range: list[float] | None = None,
     ) -> None:
         super().__init__()
-        # TODO: store all hyperparameters
-        # TODO: create learnable BEV query embedding: nn.Embedding(bev_h*bev_w, embed_dims)
-        # TODO: create learnable positional embedding for BEV queries
-        # TODO: build a grid of 3-D reference points in ego coordinates derived from
-        #       pc_range and (bev_h, bev_w); register as a buffer
-        # TODO: build nn.ModuleList of BEVEncoderLayer modules (num_layers total)
-        raise NotImplementedError
+        self.bev_h = bev_h
+        self.bev_w = bev_w
+        self.embed_dims = embed_dims
+        self.num_layers = num_layers
+        if pc_range is None:
+            pc_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+        self.pc_range = pc_range
+        self.bev_embedding = nn.Embedding(bev_h * bev_w, embed_dims)
+        self.bev_pos = nn.Embedding(bev_h * bev_w, embed_dims)
+        xs = torch.linspace(pc_range[0], pc_range[3], bev_w)
+        ys = torch.linspace(pc_range[1], pc_range[4], bev_h)
+        z_center = (pc_range[2] + pc_range[5]) / 2.0
+        grid_y, grid_x = torch.meshgrid(ys, xs, indexing="ij")
+        ref_pts = torch.stack(
+            [grid_x.flatten(), grid_y.flatten(), torch.full((bev_h * bev_w,), z_center)], dim=-1
+        )
+        self.register_buffer("reference_points", ref_pts)
+        self.layers = nn.ModuleList(
+            [BEVEncoderLayer(embed_dims, num_heads, num_points, dropout) for _ in range(num_layers)]
+        )
 
     def forward(
         self,
-        image_features: List[torch.Tensor],
+        image_features: list[torch.Tensor],
         camera_intrinsics: torch.Tensor,
         camera_extrinsics: torch.Tensor,
-        prev_bev: Optional[torch.Tensor] = None,
+        prev_bev: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Compute the BEV feature map from multi-view image features.
-
-        Args:
-            image_features: Multi-scale FPN feature maps for all cameras.
-                Each tensor: (B * num_cameras, C, H_l, W_l).
-            camera_intrinsics: Batched intrinsic matrices (B, num_cameras, 3, 3).
-            camera_extrinsics: Batched sensor-to-ego transforms (B, num_cameras, 4, 4).
-            prev_bev: BEV features from the previous frame for temporal attention.
-                Shape: (bev_h*bev_w, B, embed_dims) or None.
-
-        Returns:
-            BEV feature tensor of shape (B, embed_dims, bev_h, bev_w).
-        """
-        # TODO: expand BEV query embeddings to (bev_h*bev_w, B, embed_dims)
-        # TODO: add positional embeddings to BEV queries
-        # TODO: pass queries through each BEVEncoderLayer sequentially
-        # TODO: reshape output from (bev_h*bev_w, B, embed_dims) to (B, embed_dims, bev_h, bev_w)
-        # TODO: return the BEV feature map
-        raise NotImplementedError
+        """Compute the BEV feature map from multi-view image features."""
+        B = camera_intrinsics.shape[0]
+        HW = self.bev_h * self.bev_w
+        indices = torch.arange(HW, device=camera_intrinsics.device)
+        bev_queries = self.bev_embedding(indices) + self.bev_pos(indices)
+        bev_queries = bev_queries.unsqueeze(1).expand(-1, B, -1)  # (HW, B, C)
+        spatial_shapes = torch.tensor(
+            [[f.shape[2], f.shape[3]] for f in image_features],
+            dtype=torch.long,
+            device=camera_intrinsics.device,
+        )
+        ref: torch.Tensor = self.reference_points  # type: ignore[assignment]
+        for layer in self.layers:
+            bev_queries = layer(
+                bev_queries,
+                prev_bev,
+                image_features,
+                ref,
+                camera_intrinsics,
+                camera_extrinsics,
+                spatial_shapes,
+            )
+        bev_map: torch.Tensor = bev_queries.permute(1, 2, 0).reshape(
+            B, self.embed_dims, self.bev_h, self.bev_w
+        )
+        return bev_map

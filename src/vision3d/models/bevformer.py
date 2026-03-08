@@ -7,8 +7,6 @@ detection head into a single `nn.Module` that is passed to the Lightning module.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 import torch
 import torch.nn as nn
 
@@ -17,28 +15,11 @@ from vision3d.models.backbones.resnet import ResNetBackbone
 from vision3d.models.encoders.bev_encoder import BEVEncoder
 from vision3d.models.heads.detection_head import DetectionHead
 from vision3d.models.necks.fpn import FPNNeck
+from vision3d.utils.geometry import CameraProjector
 
 
 class BEVFormerModel(nn.Module):
-    """High-level BEVFormer model that encapsulates the full forward pass.
-
-    Acts as a pure container: receives sub-modules at construction time and
-    composes them into the end-to-end forward pipeline. No training logic lives
-    here; that responsibility belongs to `Vision3DLightningModule`.
-
-    Pipeline:
-      1. **Backbone**: Extract multi-scale 2-D features from all camera images.
-      2. **Neck (FPN)**: Align feature map scales and channel dimensions.
-      3. **BEV Encoder**: Lift multi-view features to a BEV grid using
-         Temporal Self-Attention and Spatial Cross-Attention.
-      4. **Detection Head**: Decode object queries against the BEV grid.
-
-    Args:
-        backbone: Instantiated `ResNetBackbone` module.
-        neck: Instantiated `FPNNeck` module.
-        encoder: Instantiated `BEVEncoder` module.
-        head: Instantiated `DetectionHead` module.
-    """
+    """High-level BEVFormer model that encapsulates the full forward pass."""
 
     def __init__(
         self,
@@ -48,34 +29,43 @@ class BEVFormerModel(nn.Module):
         head: DetectionHead,
     ) -> None:
         super().__init__()
-        # TODO: assign backbone, neck, encoder, head as sub-modules (self.backbone = ...)
-        raise NotImplementedError
+        self.backbone = backbone
+        self.neck = neck
+        self.encoder = encoder
+        self.head = head
 
     def forward(
         self,
         batch: BatchData,
-        prev_bev: Optional[torch.Tensor] = None,
-    ) -> Tuple[BoundingBox3DPrediction, torch.Tensor]:
-        """Run the full BEVFormer forward pass on a batch.
-
-        Args:
-            batch: `BatchData` with all frames, camera images, and calibration.
-            prev_bev: Optional previous BEV feature tensor passed to the encoder
-                for temporal attention. Shape: (bev_h*bev_w, B, embed_dims).
-
-        Returns:
-            Tuple of:
-              - `BoundingBox3DPrediction`: Detection predictions for the batch.
-              - `torch.Tensor`: Updated BEV feature map to be used as `prev_bev`
-                in the next timestep. Shape: (bev_h*bev_w, B, embed_dims).
-        """
-        # TODO: stack all camera images from batch.frames into a single tensor
-        #       of shape (B * num_cameras, C, H, W)
-        # TODO: assemble batched intrinsics (B, num_cameras, 3, 3)
-        # TODO: assemble batched extrinsics (B, num_cameras, 4, 4)
-        # TODO: pass stacked images through self.backbone to get multi-scale features
-        # TODO: pass backbone features through self.neck (FPN)
-        # TODO: pass FPN features + calibration + prev_bev to self.encoder
-        # TODO: pass BEV features to self.head to get predictions
-        # TODO: return (predictions, new_bev) where new_bev feeds the next forward call
-        raise NotImplementedError
+        prev_bev: torch.Tensor | None = None,
+    ) -> tuple[BoundingBox3DPrediction, torch.Tensor]:
+        """Run the full BEVFormer forward pass on a batch."""
+        frames = batch.frames
+        all_images = []
+        all_intrinsics = []
+        all_extrinsics = []
+        for frame in frames:
+            cam_views = list(frame.cameras.values())
+            for cam in cam_views:
+                all_images.append(cam.image)
+            frame_intrinsics = torch.stack([c.intrinsics.matrix for c in cam_views])
+            all_intrinsics.append(frame_intrinsics)
+            frame_extrinsics = []
+            for c in cam_views:
+                R = CameraProjector.quaternion_to_rotation_matrix(
+                    c.extrinsics.rotation.unsqueeze(0)
+                ).squeeze(0)
+                T = torch.eye(4, device=R.device, dtype=R.dtype)
+                T[:3, :3] = R
+                T[:3, 3] = c.extrinsics.translation
+                frame_extrinsics.append(T)
+            all_extrinsics.append(torch.stack(frame_extrinsics))
+        images = torch.stack(all_images)
+        intrinsics = torch.stack(all_intrinsics)
+        extrinsics = torch.stack(all_extrinsics)
+        features = self.backbone(images)
+        features = self.neck(features)
+        bev = self.encoder(features, intrinsics, extrinsics, prev_bev)
+        predictions = self.head(bev)
+        new_bev = bev.flatten(2).permute(2, 0, 1)
+        return predictions, new_bev
