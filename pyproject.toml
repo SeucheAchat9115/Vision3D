@@ -3,7 +3,7 @@ name = "vision3d"
 version = "0.1.0"
 description = "Open-source 3D object detection framework for autonomous driving and robotics"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 
 dependencies = [
@@ -19,9 +19,6 @@ dependencies = [
     "Pillow>=10.0.0",
     "numpy>=1.26.0",
     "scipy>=1.12.0",        # Hungarian algorithm (scipy.optimize.linear_sum_assignment)
-    # Visualisation (Foxglove MCAP)
-    "mcap>=1.1.0",
-    "foxglove-schemas-protobuf>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +27,11 @@ dev = [
     "mypy>=1.9.0",
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
+]
+# Visualisation (Foxglove MCAP) — install when using FoxgloveMCAPLogger
+viz = [
+    "mcap>=1.1.0",
+    "foxglove-schemas-protobuf>=0.7.0",
 ]
 # Dataset conversion — install when running scripts/convert_nuscenes.py
 nuscenes = [
@@ -62,7 +64,7 @@ dev-dependencies = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "PT"]
@@ -72,7 +74,7 @@ ignore = ["E501"]
 # Mypy
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 
