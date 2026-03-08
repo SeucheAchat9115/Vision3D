@@ -113,7 +113,9 @@ class FoxgloveMCAPLogger(pl.Callback):
                         )
                 writer.finish()  # type: ignore[no-untyped-call]
         except Exception:
-            pass  # MCAP writing is best-effort
+            import logging
+
+            logging.getLogger(__name__).warning("MCAP writing failed", exc_info=True)
 
     def _encode_boxes3d(
         self,

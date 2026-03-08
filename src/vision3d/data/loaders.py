@@ -90,6 +90,7 @@ class ImageLoader:
         """Load, resize, and normalise a single image."""
         img = Image.open(path).convert("RGB")
         if self.target_size is not None:
+            # PIL.resize expects (width, height); target_size is (height, width)
             img = img.resize((self.target_size[1], self.target_size[0]), Image.Resampling.BILINEAR)
         tensor = TF.to_tensor(img)
         if self.normalize:

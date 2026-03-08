@@ -49,15 +49,19 @@ class Vision3DLightningModule(pl.LightningModule):
         batch = batch.to(self.device)
         predictions, new_bev = self.model(batch, prev_bev=self._prev_bev)
         self._prev_bev = new_bev.detach()
-        targets = [f.targets for f in batch.frames if f.targets is not None]
-        pred_list = [
-            BoundingBox3DPrediction(
-                boxes=predictions.boxes[i],
-                scores=predictions.scores[i],
-                labels=predictions.labels[i],
-            )
-            for i in range(batch.batch_size)
-        ]
+        # Build parallel lists of predictions and targets (only include frames with targets)
+        pred_list = []
+        targets = []
+        for i, frame in enumerate(batch.frames):
+            if frame.targets is not None:
+                pred_list.append(
+                    BoundingBox3DPrediction(
+                        boxes=predictions.boxes[i],
+                        scores=predictions.scores[i],
+                        labels=predictions.labels[i],
+                    )
+                )
+                targets.append(frame.targets)
         matches = self.matcher.match_batch(pred_list, targets)
         total_loss, loss_dict = self.loss(pred_list, targets, matches)
         log_dict = {k: v.detach() for k, v in loss_dict.items()}
@@ -76,15 +80,18 @@ class Vision3DLightningModule(pl.LightningModule):
         with torch.no_grad():
             predictions, new_bev = self.model(batch, prev_bev=self._prev_bev)
         self._prev_bev = new_bev.detach()
-        pred_list = [
-            BoundingBox3DPrediction(
-                boxes=predictions.boxes[i],
-                scores=predictions.scores[i],
-                labels=predictions.labels[i],
-            )
-            for i in range(batch.batch_size)
-        ]
-        targets = [f.targets for f in batch.frames if f.targets is not None]
+        pred_list = []
+        targets = []
+        for i, frame in enumerate(batch.frames):
+            if frame.targets is not None:
+                pred_list.append(
+                    BoundingBox3DPrediction(
+                        boxes=predictions.boxes[i],
+                        scores=predictions.scores[i],
+                        labels=predictions.labels[i],
+                    )
+                )
+                targets.append(frame.targets)
         self.evaluator.update(pred_list, targets)
 
     def on_validation_epoch_end(self) -> None:

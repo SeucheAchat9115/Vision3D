@@ -11,6 +11,8 @@ heavy external dependencies like the nuScenes devkit.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import torch
 
@@ -165,7 +167,7 @@ class Vision3DEvaluator:
                 ase_list.append(float(1.0 - inter / union))
                 p_yaw = float(torch.atan2(p_box[6], p_box[7]).item())
                 g_yaw = float(torch.atan2(g_box[6], g_box[7]).item())
-                aoe_list.append(abs(p_yaw - g_yaw) % (2 * 3.14159))
+                aoe_list.append(abs(p_yaw - g_yaw) % (2 * math.pi))
                 ave_list.append(float(torch.norm(p_box[8:10] - g_box[8:10]).item()))
                 dists[pi, :] = 1e9
                 dists[:, gi] = 1e9

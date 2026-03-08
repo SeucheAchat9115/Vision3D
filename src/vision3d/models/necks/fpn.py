@@ -35,8 +35,7 @@ class FPNNeck(nn.Module):
 
     def forward(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
         """Build the feature pyramid and return aligned feature maps."""
-        assert len(features) == len(self.lateral_convs)
-        laterals = [lat(f) for lat, f in zip(self.lateral_convs, features, strict=False)]
+        laterals = [lat(f) for lat, f in zip(self.lateral_convs, features, strict=True)]
         for i in range(len(laterals) - 1, 0, -1):
             upsampled = F.interpolate(laterals[i], size=laterals[i - 1].shape[2:], mode="nearest")
             laterals[i - 1] = laterals[i - 1] + upsampled
