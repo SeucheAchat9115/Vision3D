@@ -59,9 +59,7 @@ def _make_camera_view(
 ) -> CameraView:
     """Return a synthetic CameraView with identity-like extrinsics."""
     torch.manual_seed(seed)
-    K = torch.tensor(
-        [[400.0, 0.0, image_w / 2.0], [0.0, 400.0, image_h / 2.0], [0.0, 0.0, 1.0]]
-    )
+    K = torch.tensor([[400.0, 0.0, image_w / 2.0], [0.0, 400.0, image_h / 2.0], [0.0, 0.0, 1.0]])
     return CameraView(
         image=torch.rand(3, image_h, image_w),
         intrinsics=CameraIntrinsics(matrix=K),
