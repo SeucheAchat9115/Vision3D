@@ -41,7 +41,6 @@ class BEVFormerModel(nn.Module):
     ) -> tuple[BoundingBox3DPrediction, torch.Tensor]:
         """Run the full BEVFormer forward pass on a batch."""
         frames = batch.frames
-        B = len(frames)  # noqa: F841
         all_images = []
         all_intrinsics = []
         all_extrinsics = []

@@ -42,5 +42,5 @@ class FPNNeck(nn.Module):
             laterals[i - 1] = laterals[i - 1] + upsampled
         outs = [self.output_convs[i](laterals[i]) for i in range(len(laterals))]
         for i in range(len(laterals), self.num_outs):
-            outs.append(self.output_convs[i](F.max_pool2d(outs[-1], 1, stride=2)))
+            outs.append(self.output_convs[i](F.max_pool2d(outs[-1], kernel_size=2, stride=2)))
         return outs
