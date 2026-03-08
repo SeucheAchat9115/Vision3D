@@ -21,7 +21,7 @@
 * **Metrics:** Custom, lean reimplementation of essential metrics in pure PyTorch/NumPy to avoid dependency bloat.
 
 ## 3. Data & Coordinate System Strategy
-* **Coordinate Frame:** Ego-centric. All transformations are applied *offline* during dataset conversion. 
+* **Coordinate Frame:** Ego-centric. All transformations are applied *offline* during dataset conversion.
 * **Images:** Assumed to be pre-undistorted.
 * **Generic Format:** Data is loaded from a custom format consisting of PNGs or JPGs and a single JSON file per frame containing all box, calibration & other metadata.
     * The JSON contains all bounding boxes, camera intrinsics, metadata, and a pointer/tag to past frames for temporal attention.
@@ -108,7 +108,7 @@ Vision3D/
 * `Vision3DEvaluator`: Orchestrates the evaluation loop. Accumulates predictions, formats them, and computes custom mAP/NDS-like metrics at the end of an epoch.
 
 ### Engine & Utilities
-* `Vision3DLightningModule(pl.LightningModule)`: 
+* `Vision3DLightningModule(pl.LightningModule)`:
     * `__init__(self, backbone, neck, encoder, head, matcher, loss, evaluator)`
     * Handles `training_step`, `validation_step`, and optimizer configuration.
 * `FoxgloveMCAPLogger(pl.Callback)`: A Lightning Callback that hooks into `on_validation_epoch_end` to write ground truth and predicted bounding boxes into an `.mcap` file for easy drag-and-drop debugging in Foxglove Studio.
@@ -293,7 +293,7 @@ class BatchData:
     """Collated output from the DataLoader passed through the pipeline"""
     batch_size: int
     frames: List[FrameData]
-    
+
     def to(self, device: torch.device):
         """Helper to recursively move all nested tensors to the target GPU"""
         # Implementation to traverse dataclasses and move tensors

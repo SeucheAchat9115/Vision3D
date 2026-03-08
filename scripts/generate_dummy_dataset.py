@@ -21,6 +21,7 @@ import math
 import random
 import uuid
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image as PILImage
@@ -91,7 +92,7 @@ class DummyDatasetGenerator:
         past_frame_ids: list[str],
     ) -> None:
         """Generate and write the image files and JSON for a single frame."""
-        cameras: dict[str, dict] = {}
+        cameras: dict[str, dict[str, Any]] = {}
         for cam_name in self.camera_names:
             img_path = self._generate_random_image(cam_name, frame_id)
             intrinsics = self._generate_random_intrinsics()
@@ -148,7 +149,7 @@ class DummyDatasetGenerator:
         rotation = q.tolist()
         return translation, rotation
 
-    def _generate_random_boxes(self, num_boxes: int) -> list[dict]:
+    def _generate_random_boxes(self, num_boxes: int) -> list[dict[str, Any]]:
         """Generate a list of random GT annotation dicts."""
         boxes = []
         for _ in range(num_boxes):

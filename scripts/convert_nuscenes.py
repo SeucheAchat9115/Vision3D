@@ -24,7 +24,7 @@ from typing import Any
 try:
     from nuscenes.nuscenes import NuScenes
 except ImportError:
-    NuScenes = None  # type: ignore[assignment,misc]
+    NuScenes = None
 
 
 class NuScenesConverter:
