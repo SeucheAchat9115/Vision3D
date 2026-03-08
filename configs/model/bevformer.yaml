@@ -13,7 +13,7 @@ model:
     backbone:
       _target_: vision3d.models.backbones.ResNetBackbone
       depth: 50
-      out_indices: [1, 2, 3]
+      out_indices: [2, 3, 4]
       pretrained: true
       frozen_stages: 1
 

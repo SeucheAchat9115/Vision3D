@@ -40,11 +40,13 @@ def main(cfg: DictConfig) -> None:
     model = instantiate(cfg.model)
     train_dataset = instantiate(cfg.dataset, split="train")
     val_dataset = instantiate(cfg.dataset, split="val")
+    persistent = cfg.num_workers > 0
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
+        persistent_workers=persistent,
         collate_fn=Vision3DDataset.collate_fn,
     )
     val_loader = DataLoader(
@@ -52,6 +54,7 @@ def main(cfg: DictConfig) -> None:
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
+        persistent_workers=persistent,
         collate_fn=Vision3DDataset.collate_fn,
     )
     foxglove_logger = FoxgloveMCAPLogger(output_dir=cfg.output_dir + "/mcap")

@@ -74,14 +74,27 @@ class ImageLoader:
         self.num_threads = num_threads
         self.target_size = target_size
         self.normalize = normalize
-        self._executor = ThreadPoolExecutor(max_workers=num_threads)
+        self._executor: ThreadPoolExecutor | None = None
         self._mean = [0.485, 0.456, 0.406]
         self._std = [0.229, 0.224, 0.225]
 
+    def _get_executor(self) -> ThreadPoolExecutor:
+        """Lazily create the thread pool executor (avoids pickling issues)."""
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=self.num_threads)
+        return self._executor
+
+    def __getstate__(self) -> dict:
+        """Exclude the unpicklable ThreadPoolExecutor from serialisation."""
+        state = self.__dict__.copy()
+        state["_executor"] = None
+        return state
+
     def load(self, camera_paths: dict[str, str]) -> dict[str, torch.Tensor]:
         """Load all camera images for a single frame concurrently."""
+        executor = self._get_executor()
         futures = {
-            name: self._executor.submit(self._load_single, name, path)
+            name: executor.submit(self._load_single, name, path)
             for name, path in camera_paths.items()
         }
         return {name: fut.result()[1] for name, fut in futures.items()}
