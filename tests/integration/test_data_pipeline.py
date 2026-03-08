@@ -52,9 +52,7 @@ class TestAugmentationModelIntegration:
         """DataAugmenter must not change the spatial dimensions of camera images."""
         augmenter = DataAugmenter(seed=0)
         frame = make_frame(image_h=64, image_w=64)
-        original_shapes = {
-            name: cam.image.shape for name, cam in frame.cameras.items()
-        }
+        original_shapes = {name: cam.image.shape for name, cam in frame.cameras.items()}
         augmented = augmenter(frame)
         for name, shape in original_shapes.items():
             assert augmented.cameras[name].image.shape == shape
@@ -69,8 +67,13 @@ class TestAugmentationModelIntegration:
 
     def test_augmentation_with_flip_training_pass(self) -> None:
         """Flipped frames must produce a finite training loss."""
-        augmenter = DataAugmenter(flip_prob=1.0, global_rot_range=(0.0, 0.0),
-                                  global_scale_range=(1.0, 1.0), color_jitter_prob=0.0, seed=0)
+        augmenter = DataAugmenter(
+            flip_prob=1.0,
+            global_rot_range=(0.0, 0.0),
+            global_scale_range=(1.0, 1.0),
+            color_jitter_prob=0.0,
+            seed=0,
+        )
         num_classes = 5
         model = make_small_model(num_classes=num_classes)
         matcher = HungarianMatcher()
@@ -134,10 +137,12 @@ class TestBoxFilterModelIntegration:
         """BoxFilter must remove boxes whose (x, y) distance exceeds max_distance."""
         box_filter = BoxFilter(max_distance=5.0)
         targets = BoundingBox3DTarget(
-            boxes=torch.tensor([
-                [1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # dist=1 → keep
-                [10.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # dist=10 → remove
-            ]),
+            boxes=torch.tensor(
+                [
+                    [1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # dist=1 → keep
+                    [10.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # dist=10 → remove
+                ]
+            ),
             labels=torch.tensor([0, 1]),
             instance_ids=["a", "b"],
         )
@@ -149,11 +154,13 @@ class TestBoxFilterModelIntegration:
         """BoxFilter must remove boxes with zero or negative width/length/height."""
         box_filter = BoxFilter(max_distance=100.0)
         targets = BoundingBox3DTarget(
-            boxes=torch.tensor([
-                [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],   # valid → keep
-                [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],   # w=0 → remove
-                [0.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # l<0 → remove
-            ]),
+            boxes=torch.tensor(
+                [
+                    [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # valid → keep
+                    [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # w=0 → remove
+                    [0.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 1.0, 0.0, 0.0],  # l<0 → remove
+                ]
+            ),
             labels=torch.tensor([0, 1, 2]),
             instance_ids=["a", "b", "c"],
         )
