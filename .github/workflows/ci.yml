@@ -26,23 +26,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: uv sync --group dev
       - name: Run mypy
-        run: mypy src/
+        run: uv run mypy src/
 
   test:
     name: Pytest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev,viz]"
+        run: uv sync --group dev --group viz
       - name: Run tests
-        run: pytest
+        run: uv run pytest
