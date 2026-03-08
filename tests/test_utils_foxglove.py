@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 from unittest.mock import MagicMock
 
 import pytest
 import pytorch_lightning as pl
 import torch
+
+_MCAP_AVAILABLE = importlib.util.find_spec("mcap") is not None
 
 from vision3d.config.schema import (
     BatchData,
@@ -234,6 +237,7 @@ class TestFoxgloveMCAPLoggerEncoding:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _MCAP_AVAILABLE, reason="mcap not installed (install vision3d[viz])")
 class TestFoxgloveMCAPLoggerWriting:
     """Test that MCAP files are written correctly."""
 
