@@ -6,7 +6,8 @@
 Vision3D/
 ├── configs/               # Hydra YAML configs (model, dataset, experiment)
 ├── docs/                  # Specialised documentation (this folder)
-├── scripts/               # Offline data-processing utilities
+├── tools/                 # Training entry point and offline data-processing utilities
+│   ├── train.py           # Hydra entry point
 │   ├── convert_nuscenes.py
 │   └── generate_dummy_dataset.py
 ├── src/
@@ -18,7 +19,6 @@ Vision3D/
 │       ├── models/        # Backbone, neck, encoder, head
 │       └── utils/         # Geometry helpers, Foxglove logger
 ├── tests/                 # Unit, integration, and smoke tests
-├── train.py               # Hydra entry point
 ├── pyproject.toml         # Project metadata & dependencies
 ├── .pre-commit-config.yaml
 └── uv.lock
@@ -75,7 +75,7 @@ tests/
 ├── data/               # Loader, filter, augmentation unit tests
 ├── integration/        # End-to-end pipeline + model smoke tests
 ├── models/             # (model-specific unit tests)
-├── scripts/            # Converter tests
+├── tools/              # Converter tests
 └── utils/              # Geometry and foxglove tests
 ```
 
@@ -107,7 +107,7 @@ uv run pytest -v
 | Smoke | `tests/integration/` | Fast end-to-end checks that the full training loop runs without error |
 
 All tests use the **dummy dataset** (generated via
-`scripts/generate_dummy_dataset.py`) so they do not require any external data.
+`tools/generate_dummy_dataset.py`) so they do not require any external data.
 The dummy data generator is called automatically by the integration test
 fixtures.
 
@@ -163,11 +163,11 @@ All three jobs must pass for a PR to be mergeable.
 
 ## Adding a new dataset
 
-1. Write a converter script under `scripts/convert_<dataset>.py` that
+1. Write a converter script under `tools/convert_<dataset>.py` that
    produces the Vision3D generic JSON + image layout (see
    [data_format.md](data_format.md)).
 2. Add a Hydra dataset config under `configs/dataset/<name>.yaml`.
-3. Test with `scripts/generate_dummy_dataset.py` first to validate the
+3. Test with `tools/generate_dummy_dataset.py` first to validate the
    pipeline before running on real data.
 
 ## Visualisation

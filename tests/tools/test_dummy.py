@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.generate_dummy_dataset import DummyDatasetGenerator
+from tools.generate_dummy_dataset import DummyDatasetGenerator
 
 # ---------------------------------------------------------------------------
 # Interface tests

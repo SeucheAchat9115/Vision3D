@@ -157,7 +157,7 @@ After installing the `nuscenes` dependency group
 generic format:
 
 ```bash
-python scripts/convert_nuscenes.py \
+python tools/convert_nuscenes.py \
   --nuscenes-root /path/to/nuscenes \
   --output-dir    data/nuscenes_v3d \
   --version       v1.0-trainval
@@ -175,7 +175,7 @@ For development and CI testing a synthetic dataset can be generated without
 any real sensor data:
 
 ```bash
-python scripts/generate_dummy_dataset.py \
+python tools/generate_dummy_dataset.py \
   --output-dir data/dummy \
   --num-frames 50
 ```

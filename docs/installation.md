@@ -40,11 +40,11 @@ uv sync --group dev --group viz --group nuscenes
 
 ```bash
 # uv run — automatically uses .venv
-uv run python train.py
+uv run python tools/train.py
 
 # Or activate manually
 source .venv/bin/activate
-python train.py
+python tools/train.py
 ```
 
 ## Set up pre-commit hooks (development only)

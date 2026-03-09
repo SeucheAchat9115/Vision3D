@@ -7,13 +7,13 @@ are recursively instantiated by Hydra from the config tree.
 
 Usage:
     # Train with default config (dummy dataset, BEVFormer):
-    python train.py
+    python tools/train.py
 
     # Train on NuScenes with a custom experiment override:
-    python train.py dataset=nuscenes experiment=exp_01 max_epochs=24
+    python tools/train.py dataset=nuscenes experiment=exp_01 max_epochs=24
 
     # Multi-run hyperparameter sweep:
-    python train.py --multirun model.learning_rate=1e-4,2e-4 max_epochs=12,24
+    python tools/train.py --multirun model.learning_rate=1e-4,2e-4 max_epochs=12,24
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from vision3d.utils.foxglove import FoxgloveMCAPLogger
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="train")
+@hydra.main(version_base=None, config_path="../configs", config_name="train")
 def main(cfg: DictConfig) -> None:
     """Hydra entry point: instantiate all components and launch training."""
     pl.seed_everything(cfg.seed)
