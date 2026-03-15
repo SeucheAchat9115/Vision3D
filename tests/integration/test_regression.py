@@ -49,7 +49,9 @@ _METRIC_LOSS_GIOU: str = "loss_giou_epoch"
 # ---------------------------------------------------------------------------
 
 
-def _make_lit_module(num_classes: int = _NUM_CLASSES, max_epochs: int = 10) -> Vision3DLightningModule:
+def _make_lit_module(
+    num_classes: int = _NUM_CLASSES, max_epochs: int = 10
+) -> Vision3DLightningModule:
     """Return a small Vision3DLightningModule for fast regression tests.
 
     *max_epochs* is forwarded to :class:`Vision3DLightningModule` so that the
