@@ -244,12 +244,12 @@ class TestScripts:
 
     def test_nuscenes_converter_exists(self):
         """NuScenesConverter should be importable and expose a convert method."""
-        from scripts.convert_nuscenes import NuScenesConverter
+        from tools.convert_nuscenes import NuScenesConverter
 
         assert hasattr(NuScenesConverter, "convert")
 
     def test_dummy_generator_exists(self):
         """DummyDatasetGenerator should be importable and expose a generate method."""
-        from scripts.generate_dummy_dataset import DummyDatasetGenerator
+        from tools.generate_dummy_dataset import DummyDatasetGenerator
 
         assert hasattr(DummyDatasetGenerator, "generate")
