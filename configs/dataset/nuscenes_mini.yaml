@@ -1,0 +1,39 @@
+# @package _global_
+#
+# Dataset configuration for NuScenes mini (after offline conversion).
+# Assumes convert_nuscenes.py output is at data/nuscenes_mini/.
+
+dataset:
+  _target_: vision3d.data.dataset.Vision3DDataset
+  data_root: data/nuscenes_mini
+  split: train
+  num_past_frames: 2
+  image_size: [900, 1600]
+
+  box_filter:
+    _target_: vision3d.data.filters.BoxFilter
+    max_distance: 50.0
+    min_points: 1
+    allowed_classes:
+      - car
+      - truck
+      - bus
+      - pedestrian
+      - motorcycle
+      - bicycle
+      - trailer
+      - construction_vehicle
+      - traffic_cone
+      - barrier
+
+  image_filter:
+    _target_: vision3d.data.filters.ImageFilter
+    rejected_weather: []
+    require_annotations: true
+
+  augmenter:
+    _target_: vision3d.data.augmentations.DataAugmenter
+    global_rot_range: [-0.3925, 0.3925]
+    global_scale_range: [0.95, 1.05]
+    flip_prob: 0.5
+    color_jitter_prob: 0.5

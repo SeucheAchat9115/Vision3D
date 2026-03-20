@@ -1,0 +1,1 @@
+uv run python tools/convert_nuscenes.py --nuscenes_root "D:\06_Datasets\01_nuscenes\v1.0-mini" --output_root "data\nuscenes_mini" --version "v1.0-mini"

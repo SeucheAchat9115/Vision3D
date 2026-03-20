@@ -8,7 +8,7 @@
 
 defaults:
   - model: bevformer        # Model architecture configuration
-  - dataset: dummy          # Dataset and dataloader configuration
+  - dataset: nuscenes_mini  # Dataset and dataloader configuration
   - experiment: default     # Experiment-level hyperparameter overrides
   - _self_                  # Allows this file to override defaults above
 

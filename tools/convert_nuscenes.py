@@ -26,6 +26,11 @@ try:
 except ImportError:
     NuScenes = None
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 
 class NuScenesConverter:
     """Converts a NuScenes split to the Vision3D generic JSON + PNG format."""
@@ -74,18 +79,35 @@ class NuScenesConverter:
                 split_scenes: set[str] = set(f.read().splitlines())
         else:
             split_scenes = {s["name"] for s in self.nusc.scene}
+
+        scenes = [scene for scene in self.nusc.scene if scene["name"] in split_scenes]
+        total_samples = 0
+        for scene in scenes:
+            sample_token = scene["first_sample_token"]
+            while sample_token:
+                total_samples += 1
+                sample = self.nusc.get("sample", sample_token)
+                sample_token = sample["next"]
+
         count = 0
-        for scene in self.nusc.scene:
-            if scene["name"] not in split_scenes:
-                continue
+        sample_pbar = (
+            tqdm(total=total_samples, desc=f"Converting {split}", unit="sample")
+            if tqdm is not None
+            else None
+        )
+        for scene in scenes:
             sample_token = scene["first_sample_token"]
             while sample_token:
                 self._convert_sample(sample_token, split)
                 count += 1
-                if count % 100 == 0:
+                if sample_pbar is not None:
+                    sample_pbar.update(1)
+                elif count % 100 == 0:
                     print(f"Converted {count} samples...")
                 sample = self.nusc.get("sample", sample_token)
                 sample_token = sample["next"]
+        if sample_pbar is not None:
+            sample_pbar.close()
 
     def _convert_sample(self, sample_token: str, split: str) -> None:
         """Convert a single NuScenes sample to Vision3D format."""

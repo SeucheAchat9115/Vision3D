@@ -38,7 +38,7 @@ viz = [
 ]
 # Dataset conversion — install when running tools/convert_nuscenes.py
 nuscenes = [
-    "nuscenes-devkit>=1.1.11",
+    "nuscenes-devkit>=1.2.0",
 ]
 
 [project.scripts]
