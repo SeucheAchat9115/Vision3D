@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
@@ -43,6 +44,8 @@ _SEED: int = 42
 _METRIC_LOSS_CLS: str = "loss_cls_epoch"
 _METRIC_LOSS_BBOX: str = "loss_bbox_epoch"
 _METRIC_LOSS_GIOU: str = "loss_giou_epoch"
+
+pytestmark = pytest.mark.filterwarnings("ignore:.*LeafSpec.*deprecated.*")
 
 
 # ---------------------------------------------------------------------------

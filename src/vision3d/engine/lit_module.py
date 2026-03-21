@@ -44,6 +44,10 @@ class Vision3DLightningModule(pl.LightningModule):
         self.max_epochs = max_epochs
         self._prev_bev: torch.Tensor | None = None
 
+    def _can_log(self) -> bool:
+        """Return True when this module is attached to a Trainer."""
+        return getattr(self, "_trainer", None) is not None
+
     def training_step(self, batch: BatchData, batch_idx: int) -> torch.Tensor:
         """Perform a single training step."""
         batch = batch.to(self.device)
@@ -65,7 +69,14 @@ class Vision3DLightningModule(pl.LightningModule):
         matches = self.matcher.match_batch(pred_list, targets)
         total_loss, loss_dict = self.loss(pred_list, targets, matches)
         log_dict = {k: v.detach() for k, v in loss_dict.items()}
-        self.log_dict(log_dict, on_step=True, on_epoch=True, prog_bar=True)
+        if self._can_log():
+            self.log_dict(
+                log_dict,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                batch_size=batch.batch_size,
+            )
         result: torch.Tensor = total_loss
         return result
 
@@ -97,7 +108,8 @@ class Vision3DLightningModule(pl.LightningModule):
     def on_validation_epoch_end(self) -> None:
         """Compute and log all evaluation metrics at the end of validation."""
         metrics = self.evaluator.compute()
-        self.log_dict({"val/" + k: v for k, v in metrics.items()}, on_epoch=True)
+        if self._can_log():
+            self.log_dict({"val/" + k: v for k, v in metrics.items()}, on_epoch=True)
 
     def configure_optimizers(self) -> Any:
         """Configure AdamW optimiser with a cosine annealing LR schedule."""
