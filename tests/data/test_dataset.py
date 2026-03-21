@@ -222,6 +222,23 @@ class TestVision3DDatasetTemporalFrames:
         item = frames_by_id["frame_001"]
         assert len(item.past_frames) == 1
         assert item.past_frames[0].frame_id == "past_000"
+        assert item.past_frames[0].cameras == {}
+
+    def test_past_frame_images_loaded_when_enabled(self, tmp_path: Path):
+        _make_frame_json(tmp_path, "past_000")
+        _make_frame_json(tmp_path, "frame_001", past_frame_ids=["past_000"])
+        ds = Vision3DDataset(
+            str(tmp_path),
+            split="train",
+            image_size=(16, 16),
+            num_past_frames=1,
+            load_past_images=True,
+        )
+        frames_by_id = {ds[i].frame_id: ds[i] for i in range(len(ds))}
+        item = frames_by_id["frame_001"]
+        assert len(item.past_frames) == 1
+        assert "front" in item.past_frames[0].cameras
+        assert item.past_frames[0].cameras["front"].image.shape == (3, 16, 16)
 
     def test_missing_past_frame_gracefully_skipped(self, tmp_path: Path):
         _make_frame_json(tmp_path, "frame_000", past_frame_ids=["nonexistent_id"])

@@ -13,12 +13,23 @@ Covered scenarios:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
+
 import pytest
 import torch
 
 from vision3d.models.backbones.resnet import ResNetBackbone
 from vision3d.models.encoders.bev_encoder import BEVEncoder
 from vision3d.models.necks.fpn import FPNNeck
+
+F = TypeVar("F", bound=Callable[..., object])
+
+
+def typed_parametrize(*args: Any, **kwargs: Any) -> Callable[[F], F]:
+    """Typed wrapper around pytest.mark.parametrize for mypy compatibility."""
+    return cast(Callable[[F], F], pytest.mark.parametrize(*args, **kwargs))
+
 
 # ---------------------------------------------------------------------------
 # 1. Backbone + Neck combinations
@@ -28,7 +39,7 @@ from vision3d.models.necks.fpn import FPNNeck
 class TestBackboneNeckIntegration:
     """Verify that different backbone depths are wired correctly to FPNNeck."""
 
-    @pytest.mark.parametrize("depth", [18, 34])
+    @typed_parametrize("depth", [18, 34])
     def test_resnet_shallow_fpn_output_shape(self, depth: int) -> None:
         """ResNet18/34 channels [64,128,256] must be compatible with FPNNeck."""
         backbone = ResNetBackbone(depth=depth, pretrained=False, out_indices=[1, 2, 3])

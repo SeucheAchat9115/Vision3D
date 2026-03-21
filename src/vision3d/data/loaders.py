@@ -101,13 +101,17 @@ class ImageLoader:
 
     def _load_single(self, name: str, path: str) -> tuple[str, torch.Tensor]:
         """Load, resize, and normalise a single image."""
-        img = Image.open(path).convert("RGB")
-        if self.target_size is not None:
-            # PIL.resize expects (width, height); target_size is (height, width)
-            img = img.resize((self.target_size[1], self.target_size[0]), Image.Resampling.BILINEAR)
-        tensor = TF.to_tensor(img)
+        with Image.open(path) as raw_img:
+            img = raw_img.convert("RGB")
+            if self.target_size is not None:
+                # PIL.resize expects (width, height); target_size is (height, width)
+                img = img.resize(
+                    (self.target_size[1], self.target_size[0]),
+                    Image.Resampling.BILINEAR,
+                )
+            tensor = TF.to_tensor(img)
         if self.normalize:
-            tensor = TF.normalize(tensor, mean=self._mean, std=self._std)
+            tensor = TF.normalize(tensor, mean=self._mean, std=self._std, inplace=True)
         return name, tensor
 
     def __del__(self) -> None:

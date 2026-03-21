@@ -16,6 +16,8 @@ defaults:
 max_epochs: 24
 batch_size: 1
 num_workers: 4
+persistent_workers: false
+prefetch_factor: 1
 seed: 42
 output_dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
 

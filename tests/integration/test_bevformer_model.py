@@ -14,11 +14,21 @@ Covered scenarios:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
+
 import pytest
 import torch
 
 from tests.integration.helpers import make_batch, make_small_model
 from vision3d.config.schema import BoundingBox3DPrediction
+
+F = TypeVar("F", bound=Callable[..., object])
+
+
+def typed_parametrize(*args: Any, **kwargs: Any) -> Callable[[F], F]:
+    """Typed wrapper around pytest.mark.parametrize for mypy compatibility."""
+    return cast(Callable[[F], F], pytest.mark.parametrize(*args, **kwargs))
 
 
 class TestBEVFormerModelIntegration:
@@ -135,7 +145,7 @@ class TestBEVFormerModelIntegration:
         assert torch.allclose(preds1.boxes, preds2.boxes)
         assert torch.allclose(preds1.scores, preds2.scores)
 
-    @pytest.mark.parametrize("depth", [18, 34])
+    @typed_parametrize("depth", [18, 34])
     def test_different_backbone_depths(self, depth: int) -> None:
         """Models with different backbone depths must produce compatible outputs."""
         model = make_small_model(backbone_depth=depth)
@@ -143,7 +153,7 @@ class TestBEVFormerModelIntegration:
         preds, _ = model(batch)
         assert isinstance(preds, BoundingBox3DPrediction)
 
-    @pytest.mark.parametrize("num_queries", [5, 20, 50])
+    @typed_parametrize("num_queries", [5, 20, 50])
     def test_different_query_counts(self, num_queries: int) -> None:
         """Models with different query counts must produce shapes matching num_queries."""
         model = make_small_model(num_queries=num_queries)
@@ -151,7 +161,7 @@ class TestBEVFormerModelIntegration:
         preds, _ = model(batch)
         assert preds.boxes.shape[1] == num_queries
 
-    @pytest.mark.parametrize("bev_size", [(4, 4), (6, 8)])
+    @typed_parametrize("bev_size", [(4, 4), (6, 8)])
     def test_different_bev_grid_sizes(self, bev_size: tuple[int, int]) -> None:
         """Models with different BEV grid sizes must produce correctly-sized new_bev."""
         H, W = bev_size

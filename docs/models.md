@@ -243,7 +243,7 @@ pixel_coords = projector.project(
 
 ## Lightning module
 
-**File:** `src/vision3d/engine/lit_module.py`  
+**File:** `src/vision3d/engine/lit_module.py`
 **Class:** `Vision3DLightningModule`
 
 Wraps `BEVFormerModel` and the training-only components (matcher, loss,

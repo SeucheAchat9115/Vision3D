@@ -110,12 +110,15 @@ class TestHydraConfigDefaults:
         cfg = TrainConfig()
         assert cfg.max_epochs == 24
         assert cfg.batch_size == 1
+        assert cfg.persistent_workers is False
+        assert cfg.prefetch_factor == 1
 
     def test_dataset_defaults(self):
         cfg = DatasetConfig()
         assert cfg.split == "train"
         assert cfg.num_cameras == 6
         assert cfg.num_past_frames == 2
+        assert cfg.load_past_images is False
 
 
 class TestLitModuleConfigFields:

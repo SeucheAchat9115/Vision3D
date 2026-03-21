@@ -11,6 +11,9 @@ Covered scenarios:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
+
 import pytest
 import torch
 
@@ -19,6 +22,13 @@ from vision3d.config.schema import BatchData, BoundingBox3DPrediction
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
 from vision3d.models.bevformer import BEVFormerModel
+
+F = TypeVar("F", bound=Callable[..., object])
+
+
+def typed_parametrize(*args: Any, **kwargs: Any) -> Callable[[F], F]:
+    """Typed wrapper around pytest.mark.parametrize for mypy compatibility."""
+    return cast(Callable[[F], F], pytest.mark.parametrize(*args, **kwargs))
 
 
 class TestModelMatcherLossIntegration:
@@ -45,7 +55,7 @@ class TestModelMatcherLossIntegration:
         targets = [f.targets for f in batch.frames if f.targets is not None]
         matches = matcher.match_batch(pred_list, targets)
         total, _ = loss_fn(pred_list, targets, matches)
-        return total
+        return cast(torch.Tensor, total)
 
     def test_training_pass_loss_is_finite(self) -> None:
         """End-to-end training pass must produce a finite scalar loss."""
@@ -75,7 +85,7 @@ class TestModelMatcherLossIntegration:
         loss_fn = DetectionLoss(num_classes=num_classes)
         batch = make_batch(num_classes=num_classes)
         total = self._run_training_pass(batch, model, matcher, loss_fn)
-        total.backward()
+        total.backward()  # type: ignore[no-untyped-call]
         n_params_with_grad = sum(
             1 for p in model.parameters() if p.requires_grad and p.grad is not None
         )
@@ -141,7 +151,7 @@ class TestModelMatcherLossIntegration:
         total, _ = loss_fn(pred_list, targets, matches)
         assert torch.isfinite(total)
 
-    @pytest.mark.parametrize(
+    @typed_parametrize(
         ("cls_w", "bbox_w", "giou_w"),
         [(2.0, 0.25, 0.1), (1.0, 1.0, 1.0), (0.0, 1.0, 0.0)],
     )
@@ -176,7 +186,7 @@ class TestModelMatcherLossIntegration:
 
         optimizer.zero_grad()
         total = self._run_training_pass(batch, model, matcher, loss_fn)
-        total.backward()
+        total.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
 
         params_after = [p.data for p in model.parameters() if p.requires_grad]

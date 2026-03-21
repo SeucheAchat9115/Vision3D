@@ -337,6 +337,7 @@ class DatasetConfig:
         split: Dataset split, e.g. "train", "val", or "test".
         num_cameras: Expected number of cameras per frame.
         num_past_frames: How many past frames to load for temporal attention.
+        load_past_images: Whether to load camera tensors for past frames.
         image_size: Target (height, width) to resize images to.
     """
 
@@ -345,6 +346,7 @@ class DatasetConfig:
     split: str = "train"
     num_cameras: int = 6
     num_past_frames: int = 2
+    load_past_images: bool = False
     image_size: list[int] = field(default_factory=lambda: [900, 1600])
 
 
@@ -361,6 +363,8 @@ class TrainConfig:
     max_epochs: int = 24
     batch_size: int = 1
     num_workers: int = 4
+    persistent_workers: bool = False
+    prefetch_factor: int = 1
     learning_rate: float = 2e-4
     weight_decay: float = 1e-4
     seed: int = 42

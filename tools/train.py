@@ -40,23 +40,18 @@ def main(cfg: DictConfig) -> None:
     model = instantiate(cfg.model)
     train_dataset = instantiate(cfg.dataset, split="train")
     val_dataset = instantiate(cfg.dataset, split="val")
-    persistent = cfg.num_workers > 0
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        persistent_workers=persistent,
-        collate_fn=Vision3DDataset.collate_fn,
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        persistent_workers=persistent,
-        collate_fn=Vision3DDataset.collate_fn,
-    )
+    persistent = cfg.num_workers > 0 and bool(cfg.get("persistent_workers", False))
+    dataloader_kwargs = {
+        "batch_size": cfg.batch_size,
+        "num_workers": cfg.num_workers,
+        "persistent_workers": persistent,
+        "collate_fn": Vision3DDataset.collate_fn,
+    }
+    if cfg.num_workers > 0:
+        dataloader_kwargs["prefetch_factor"] = max(1, int(cfg.get("prefetch_factor", 1)))
+
+    train_loader = DataLoader(train_dataset, shuffle=True, **dataloader_kwargs)
+    val_loader = DataLoader(val_dataset, shuffle=False, **dataloader_kwargs)
     foxglove_logger = FoxgloveMCAPLogger(output_dir=cfg.output_dir + "/mcap")
     checkpoint_cb = pl.callbacks.ModelCheckpoint(
         monitor="val/mAP",

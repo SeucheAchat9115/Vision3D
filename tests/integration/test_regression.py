@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader
 
 from tests.integration.helpers import make_small_model
 from tools.generate_dummy_dataset import DummyDatasetGenerator
+from vision3d.config.schema import BatchData
 from vision3d.core.evaluators import Vision3DEvaluator
 from vision3d.core.losses import DetectionLoss
 from vision3d.core.matchers import HungarianMatcher
@@ -94,7 +95,7 @@ def _generate_dataset(root: Path, seed: int = _SEED) -> None:
     gen2.generate(split="val")
 
 
-def _make_loaders(root: Path) -> tuple[DataLoader, DataLoader]:
+def _make_loaders(root: Path) -> tuple[DataLoader[BatchData], DataLoader[BatchData]]:
     """Return (train_loader, val_loader) backed by on-disk generated data."""
     train_ds = Vision3DDataset(str(root), split="train", image_size=_IMAGE_SIZE)
     val_ds = Vision3DDataset(str(root), split="val", image_size=_IMAGE_SIZE)
