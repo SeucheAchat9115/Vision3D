@@ -66,6 +66,7 @@ def main(cfg: DictConfig) -> None:
         logger=pl.loggers.TensorBoardLogger(cfg.output_dir),
     )
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    log.info("Training complete. Best checkpoint saved at: %s", checkpoint_cb.best_model_path)
 
 
 if __name__ == "__main__":
