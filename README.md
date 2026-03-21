@@ -22,6 +22,26 @@ python tools/train.py
 python tools/train.py dataset=nuscenes max_epochs=24 batch_size=4
 ```
 
+## GitHub Codespaces
+
+Vision3D includes a ready-to-use Codespaces setup in
+`.devcontainer/devcontainer.json`.
+
+It will automatically:
+
+- install `uv`
+- install recommended VS Code extensions (Python, Pylance, Ruff, Jupyter, Copilot)
+- create the project virtual environment and sync dependencies via `uv sync --group dev`
+- install pre-commit hooks
+
+How to use:
+
+1. Open the repository on GitHub.
+2. Click **Code** → **Codespaces** → **Create codespace on main**.
+3. Wait for container creation; dependencies and hooks are installed automatically.
+
+Open the repository in a container and start coding immediately.
+
 ## Tech stack
 
 | Concern | Tool |
