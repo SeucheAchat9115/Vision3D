@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Generate synthetic data for local testing and smoke checks.
-OUTPUT_DIR="data/dummy"
+OUTPUT_ROOT="data/dummy"
 NUM_FRAMES="50"
 
 uv run python tools/generate_dummy_dataset.py \
-  --output-dir "$OUTPUT_DIR" \
-  --num-frames "$NUM_FRAMES"
+  --output_root "$OUTPUT_ROOT" \
+  --num_frames "$NUM_FRAMES"
