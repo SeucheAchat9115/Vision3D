@@ -22,7 +22,7 @@ import logging
 
 import hydra
 import pytorch_lightning as pl
-from hydra.utils import instantiate
+from hydra.utils import instantiate, to_absolute_path
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
@@ -38,8 +38,15 @@ def main(cfg: DictConfig) -> None:
     pl.seed_everything(cfg.seed)
     log.info("Starting training with config: %s", cfg)
     model = instantiate(cfg.model)
-    train_dataset = instantiate(cfg.dataset, split="train")
-    val_dataset = instantiate(cfg.dataset, split="val")
+    data_root = to_absolute_path(str(cfg.dataset.data_root))
+    train_dataset = instantiate(cfg.dataset, split="train", data_root=data_root)
+    val_dataset = instantiate(cfg.dataset, split="val", data_root=data_root)
+    if len(train_dataset) == 0:
+        raise ValueError(
+            f"Training dataset is empty for data_root={data_root!r}. "
+            "Check dataset path and split files."
+        )
+    has_val_data = len(val_dataset) > 0
     persistent = cfg.num_workers > 0 and bool(cfg.get("persistent_workers", False))
     dataloader_kwargs = {
         "batch_size": cfg.batch_size,
@@ -51,17 +58,28 @@ def main(cfg: DictConfig) -> None:
         dataloader_kwargs["prefetch_factor"] = max(1, int(cfg.get("prefetch_factor", 1)))
 
     train_loader = DataLoader(train_dataset, shuffle=True, **dataloader_kwargs)
-    val_loader = DataLoader(val_dataset, shuffle=False, **dataloader_kwargs)
-    foxglove_logger = FoxgloveMCAPLogger(output_dir=cfg.output_dir + "/mcap")
-    checkpoint_cb = pl.callbacks.ModelCheckpoint(
-        monitor="val/mAP",
-        mode="max",
-        save_top_k=3,
-        filename="{epoch:02d}-{val/mAP:.3f}",
+    val_loader = (
+        DataLoader(val_dataset, shuffle=False, **dataloader_kwargs) if has_val_data else None
     )
+    train_batches = len(train_loader)
+    log_every_n_steps = max(1, min(50, train_batches))
+    foxglove_logger = FoxgloveMCAPLogger(output_dir=cfg.output_dir + "/mcap")
+    if has_val_data:
+        checkpoint_cb = pl.callbacks.ModelCheckpoint(
+            monitor="val/mAP",
+            mode="max",
+            save_top_k=3,
+            filename="{epoch:02d}-{val/mAP:.3f}",
+        )
+    else:
+        log.warning(
+            "Validation dataset is empty; disabling validation and metric-based checkpointing"
+        )
+        checkpoint_cb = pl.callbacks.ModelCheckpoint(save_top_k=0, save_last=True)
     lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
         max_epochs=cfg.max_epochs,
+        log_every_n_steps=log_every_n_steps,
         callbacks=[foxglove_logger, checkpoint_cb, lr_monitor],
         logger=pl.loggers.TensorBoardLogger(cfg.output_dir),
     )
