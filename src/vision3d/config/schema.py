@@ -339,6 +339,7 @@ class DatasetConfig:
         num_past_frames: How many past frames to load for temporal attention.
         load_past_images: Whether to load camera tensors for past frames.
         image_size: Target (height, width) to resize images to.
+        downsample_factor: Integer image downsampling factor applied during loading.
     """
 
     _target_: str = "vision3d.data.dataset.Vision3DDataset"
@@ -348,6 +349,7 @@ class DatasetConfig:
     num_past_frames: int = 2
     load_past_images: bool = False
     image_size: list[int] = field(default_factory=lambda: [900, 1600])
+    downsample_factor: int = 1
 
 
 @dataclass

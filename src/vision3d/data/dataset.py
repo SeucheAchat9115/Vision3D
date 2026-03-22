@@ -39,7 +39,11 @@ class Vision3DDataset(Dataset[FrameData]):
         image_filter: ImageFilter | None = None,
         augmenter: DataAugmenter | None = None,
         image_size: tuple[int, int] = (900, 1600),
+        downsample_factor: int = 1,
     ) -> None:
+        if downsample_factor < 1:
+            raise ValueError("downsample_factor must be >= 1")
+
         self.data_root = Path(data_root)
         self.split = split
         self.num_past_frames = num_past_frames
@@ -48,19 +52,35 @@ class Vision3DDataset(Dataset[FrameData]):
         self.image_filter = image_filter if image_filter is not None else ImageFilter()
         self.augmenter = augmenter
         self.image_size = image_size
+        self.downsample_factor = downsample_factor
+        self._target_image_size = (
+            max(1, self.image_size[0] // self.downsample_factor),
+            max(1, self.image_size[1] // self.downsample_factor),
+        )
         split_dir = self.data_root / split
         self._frame_paths = sorted(split_dir.glob("*.json")) if split_dir.exists() else []
         self._frame_id_to_path: dict[str, Path] = {p.stem: p for p in self._frame_paths}
         self._json_loader = JsonLoader(validate_schema=True)
-        self._image_loader = ImageLoader(num_threads=4, target_size=image_size, normalize=True)
+        self._image_loader = ImageLoader(
+            num_threads=4,
+            target_size=self._target_image_size,
+            normalize=True,
+        )
 
     def _build_camera_views(
         self, camera_data: dict[str, dict[str, object]], images: dict[str, torch.Tensor]
     ) -> dict[str, CameraView]:
         """Build typed CameraView objects from JSON camera blocks and loaded tensors."""
         cameras: dict[str, CameraView] = {}
+        src_h, src_w = self.image_size
+        dst_h, dst_w = self._target_image_size
+        scale_x = dst_w / src_w
+        scale_y = dst_h / src_h
         for cam_name, cam in camera_data.items():
             intr = torch.tensor(cam["intrinsics"], dtype=torch.float32)
+            # Keep camera geometry consistent with resized images.
+            intr[0, :] *= scale_x
+            intr[1, :] *= scale_y
             trans = torch.tensor(cam["sensor2ego_translation"], dtype=torch.float32)
             rot = torch.tensor(cam["sensor2ego_rotation"], dtype=torch.float32)
             cameras[cam_name] = CameraView(

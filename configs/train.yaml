@@ -15,7 +15,7 @@ defaults:
 # --- Trainer settings ---
 max_epochs: 24
 batch_size: 1
-num_workers: 4
+num_workers: 0
 persistent_workers: false
 prefetch_factor: 1
 seed: 42

@@ -9,6 +9,7 @@ dataset:
   split: train
   num_past_frames: 2
   image_size: [900, 1600]
+  downsample_factor: 16
 
   box_filter:
     _target_: vision3d.data.filters.BoxFilter

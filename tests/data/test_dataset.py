@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import torch
 
 from vision3d.config.schema import BatchData, FrameData
@@ -163,6 +164,42 @@ class TestVision3DDatasetLoading:
         ds = Vision3DDataset(str(tmp_path), split="train", image_size=(target_h, target_w))
         item = ds[0]
         assert item.cameras["front"].image.shape == (3, target_h, target_w)
+
+    def test_downsample_factor_reduces_image_resolution(self, tmp_path: Path):
+        _make_frame_json(tmp_path, "frame_000", image_h=64, image_w=64)
+        ds = Vision3DDataset(
+            str(tmp_path),
+            split="train",
+            image_size=(64, 64),
+            downsample_factor=2,
+        )
+        item = ds[0]
+        assert item.cameras["front"].image.shape == (3, 32, 32)
+
+    def test_downsample_factor_scales_intrinsics(self, tmp_path: Path):
+        _make_frame_json(tmp_path, "frame_000", image_h=16, image_w=16)
+        ds = Vision3DDataset(
+            str(tmp_path),
+            split="train",
+            image_size=(16, 16),
+            downsample_factor=2,
+        )
+        item = ds[0]
+        intr = item.cameras["front"].intrinsics.matrix
+        assert intr[0, 0].item() == pytest.approx(200.0)
+        assert intr[1, 1].item() == pytest.approx(200.0)
+        assert intr[0, 2].item() == pytest.approx(4.0)
+        assert intr[1, 2].item() == pytest.approx(4.0)
+
+    def test_downsample_factor_must_be_positive(self, tmp_path: Path):
+        _make_frame_json(tmp_path, "frame_000")
+        with pytest.raises(ValueError, match="downsample_factor"):
+            Vision3DDataset(
+                str(tmp_path),
+                split="train",
+                image_size=(16, 16),
+                downsample_factor=0,
+            )
 
 
 class TestVision3DDatasetFiltering:

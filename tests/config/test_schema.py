@@ -119,6 +119,7 @@ class TestHydraConfigDefaults:
         assert cfg.num_cameras == 6
         assert cfg.num_past_frames == 2
         assert cfg.load_past_images is False
+        assert cfg.downsample_factor == 1
 
 
 class TestLitModuleConfigFields:
